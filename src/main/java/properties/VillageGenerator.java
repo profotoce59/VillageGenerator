@@ -2,11 +2,10 @@ package properties;
 
 import kaptainwutax.biomeutils.biome.Biome;
 import kaptainwutax.biomeutils.biome.Biomes;
-import kaptainwutax.featureutils.structure.RegionStructure;
-import kaptainwutax.featureutils.structure.Stronghold;
 import kaptainwutax.featureutils.structure.Village;
 import kaptainwutax.featureutils.structure.generator.Generator;
-import kaptainwutax.featureutils.structure.generator.piece.village.*;
+
+import kaptainwutax.featureutils.structure.generator.piece.village.CommonVillageJigsawBlocks;
 import kaptainwutax.mcutils.block.Block;
 import kaptainwutax.mcutils.block.Blocks;
 import kaptainwutax.mcutils.rand.ChunkRand;
@@ -23,12 +22,9 @@ import kaptainwutax.mcutils.version.MCVersion;
 import kaptainwutax.seedutils.rand.JRand;
 import kaptainwutax.terrainutils.TerrainGenerator;
 import reecriture.*;
-import reecriture.VillagePools.PlainPool;
-import reecriture.VillagePools.PlainsVillageJigsawBlock;
+import reecriture.VillagePools.*;
 
 import java.util.*;
-
-import static kaptainwutax.mcutils.util.block.BlockDirection.DOWN;
 
 public class VillageGenerator extends Generator {
     public List<Piece> pieces = new ArrayList<Piece>();
@@ -46,7 +42,7 @@ public class VillageGenerator extends Generator {
         Village village = new Village(this.getVersion());
         // instantiate the biome type
         if(!village.canSpawn(chunkX, chunkZ, generator.getBiomeSource())) return false;
-        Biome biome = Biomes.PLAINS;
+        Biome biome = Biomes.TAIGA;
         this.villageType = VillageType.getType(biome, generator.getVersion());
         // compute the rotation
         rand.setCarverSeed(generator.getWorldSeed(), chunkX, chunkZ, generator.getVersion());
@@ -151,9 +147,9 @@ public class VillageGenerator extends Generator {
                 if(listtmp != null) {
                     Quad<String, String, String, Block> nbt2 = listtmp.get(0).getFirst();
                     BPos size = CommonVillageJigsawBlocks.JIGSAW_BLOCKS.get(removeDesert(this.name)).get(0).getSecond();
-                    list.add(new BlockJigsawInfo(nbt2, size, rotation));
+                    list.add(new BlockJigsawInfo(nbt2, size.transform(BlockMirror.NONE, rotation, BPos.ORIGIN).add(offset), rotation));
                 }
-                else list.add(new BlockJigsawInfo(new Quad<String, String, String, Block>("empty", "bottom", "down_south", Blocks.STRUCTURE_VOID),new BPos(0,0,0),rotation));
+                else list.add(new BlockJigsawInfo(new Quad<String, String, String, Block>("empty", "bottom", "down_south", Blocks.STRUCTURE_VOID),offset,rotation));
 
             }
             //else list = Collections.emptyList();
@@ -188,10 +184,6 @@ public class VillageGenerator extends Generator {
 
         public BlockDirection getFront() {
             return rotation.rotate((BlockDirection.fromString(this.nbt.getThird().split("_")[0])));
-        }
-
-        public Triplet<String, List<Pair<String, Integer>>, PlacementBehaviour> getPool() {
-            return VILLAGE_POOLS.get(this.nbt.getFirst());
         }
 
         public static boolean canAttach(BlockJigsawInfo blockJigsawInfo, BlockJigsawInfo blockJigsawInfo2) {
@@ -246,10 +238,10 @@ public class VillageGenerator extends Generator {
                         blockPos.getZ() + blockDirection.getVector().getZ()); //erreur in relative with vector.getZ
                 int y = blockPos.getY() - minY;
                 int state = -1;
-                Triplet<String, List<Pair<String, Integer>>, PlacementBehaviour> pool = blockJigsawInfo.getPool();
+                Triplet<String, List<Pair<String, Integer>>, PlacementBehaviour> pool = villageType.getPool().get(blockJigsawInfo.nbt.getFirst());
                 if (pool != null && pool.getSecond().size() != 0) {
                     String fallbackLocation = pool.getFirst();
-                    Triplet<String, List<Pair<String, Integer>>, PlacementBehaviour> fallbackPool = VILLAGE_POOLS.get(fallbackLocation);
+                    Triplet<String, List<Pair<String, Integer>>, PlacementBehaviour> fallbackPool = villageType.getPool().get(fallbackLocation);
                     if (fallbackPool != null && fallbackPool.getSecond().size() != 0) {
                         JigSawPool jigSawPool1 = new JigSawPool(pool.getSecond());
                         JigSawPool jigSawPool2 = new JigSawPool(fallbackPool.getSecond());
@@ -289,7 +281,6 @@ public class VillageGenerator extends Generator {
                             System.out.println("test");
                         }*/
                             list.addAll(listtmp);
-
                         for (String jigsawpiece1 : list) {
                             if (jigsawpiece1 == "empty") break;
                             for (BlockRotation rotation1 : BlockRotation.getShuffled(rand) ) {
@@ -304,7 +295,7 @@ public class VillageGenerator extends Generator {
                                 }
                                 Piece piece1 = new Piece(jigsawpiece1, BPos.ORIGIN, box1, rotation1, pool.getThird(),0); //problème quand c'est un terminator
                                 /*tmp =  rand.nextInt();
-                                if (tmp == -300997910){
+                                if (tmp == -1314111507){
                                     System.out.println("test");
                                 }
                                 System.out.println("avant getShuffledJigsawBlocks2 "+ tmp);*/
@@ -319,9 +310,9 @@ public class VillageGenerator extends Generator {
                                         if (!box1.contains(relativetmp)) {
                                             return 0;
                                         } else {
-                                            Triplet<String, List<Pair<String, Integer>>, PlacementBehaviour> pool2 = p_242841_2_.getPool();
+                                            Triplet<String, List<Pair<String, Integer>>, PlacementBehaviour> pool2 = villageType.getPool().get(p_242841_2_.nbt.getFirst());
                                             String fallbackLocation2 = pool2.getFirst();
-                                            Triplet<String, List<Pair<String, Integer>>, PlacementBehaviour> fallbackPool2 = VILLAGE_POOLS.get(fallbackLocation2);
+                                            Triplet<String, List<Pair<String, Integer>>, PlacementBehaviour> fallbackPool2 = villageType.getPool().get(fallbackLocation2);
                                             Triplet<String, List<Pair<String, Integer>>, PlacementBehaviour> fallbackPool3;
                                             int k3 = 0;
 
@@ -404,7 +395,7 @@ public class VillageGenerator extends Generator {
                                                 this.pieces.add(piece2);
                                                 piece2.setVoxelShape(mutableobject1);
                                                 this.placing.addLast(piece2);
-                                                System.out.println("piece ajoutée"+piece2.name);
+                                                //System.out.println("piece ajoutée"+piece2.name);
                                             }
                                             continue label139;
                                         }
@@ -922,7 +913,7 @@ public class VillageGenerator extends Generator {
         this.put("village/desert/town_centers/desert_meeting_point_2", new BPos(12, 6, 12));
         this.put("village/desert/town_centers/desert_meeting_point_3", new BPos(15, 6, 15));
         this.put("village/desert/villagers/baby", new BPos(1, 2, 1));
-        this.put("village/desert/villagers/nitwi", new BPos(1, 3, 1));
+        this.put("village/desert/villagers/nitwit", new BPos(1, 3, 1));
         this.put("village/desert/villagers/unemployed", new BPos(1, 3, 1));
         this.put("village/desert/zombie/houses/desert_medium_house_1", new BPos(6, 6, 7));
         this.put("village/desert/zombie/houses/desert_medium_house_2", new BPos(11, 9, 7));
@@ -949,7 +940,7 @@ public class VillageGenerator extends Generator {
         this.put("village/desert/zombie/town_centers/desert_meeting_point_1", new BPos(17, 6, 9));
         this.put("village/desert/zombie/town_centers/desert_meeting_point_2", new BPos(12, 6, 12));
         this.put("village/desert/zombie/town_centers/desert_meeting_point_3", new BPos(15, 6, 15));
-        this.put("village/desert/zombie/villagers/nitwi", new BPos(1, 3, 1));
+        this.put("village/desert/zombie/villagers/nitwit", new BPos(1, 3, 1));
         this.put("village/desert/zombie/villagers/unemployed", new BPos(1, 3, 1));
         this.put("village/plains/plains_lamp_1", new BPos(3, 4, 3));
         this.put("village/plains/houses/plains_accessory_1", new BPos(3, 2, 5));
@@ -1013,7 +1004,7 @@ public class VillageGenerator extends Generator {
         this.put("village/plains/town_centers/plains_meeting_point_2", new BPos(8, 5, 15));
         this.put("village/plains/town_centers/plains_meeting_point_3", new BPos(11, 9, 11));
         this.put("village/plains/villagers/baby", new BPos(1, 2, 1));
-        this.put("village/plains/villagers/nitwi", new BPos(1, 3, 1));
+        this.put("village/plains/villagers/nitwit", new BPos(1, 3, 1));
         this.put("village/plains/villagers/unemployed", new BPos(1, 3, 1));
         this.put("village/plains/zombie/houses/plains_animal_pen_3", new BPos(8, 6, 11));
         this.put("village/plains/zombie/houses/plains_big_house_1", new BPos(7, 11, 11));
@@ -1053,7 +1044,7 @@ public class VillageGenerator extends Generator {
         this.put("village/plains/zombie/town_centers/plains_meeting_point_1", new BPos(10, 7, 10));
         this.put("village/plains/zombie/town_centers/plains_meeting_point_2", new BPos(8, 5, 15));
         this.put("village/plains/zombie/town_centers/plains_meeting_point_3", new BPos(11, 9, 11));
-        this.put("village/plains/zombie/villagers/nitwi", new BPos(1, 3, 1));
+        this.put("village/plains/zombie/villagers/nitwit", new BPos(1, 3, 1));
         this.put("village/plains/zombie/villagers/unemployed", new BPos(1, 3, 1));
         this.put("savanna/savanna_lamp_post_01", new BPos(1, 2, 1));
         this.put("savanna/houses/savanna_animal_pen_1", new BPos(9, 5, 9));
@@ -1112,7 +1103,7 @@ public class VillageGenerator extends Generator {
         this.put("savanna/town_centers/savanna_meeting_point_3", new BPos(9, 6, 11));
         this.put("savanna/town_centers/savanna_meeting_point_4", new BPos(9, 6, 9));
         this.put("savanna/villagers/baby", new BPos(1, 2, 1));
-        this.put("savanna/villagers/nitwi", new BPos(1, 3, 1));
+        this.put("savanna/villagers/nitwit", new BPos(1, 3, 1));
         this.put("savanna/villagers/unemployed", new BPos(1, 3, 1));
         this.put("savanna/zombie/houses/savanna_animal_pen_2", new BPos(13, 7, 12));
         this.put("savanna/zombie/houses/savanna_animal_pen_3", new BPos(8, 5, 9));
@@ -1151,7 +1142,7 @@ public class VillageGenerator extends Generator {
         this.put("savanna/zombie/town_centers/savanna_meeting_point_2", new BPos(11, 6, 11));
         this.put("savanna/zombie/town_centers/savanna_meeting_point_3", new BPos(9, 6, 11));
         this.put("savanna/zombie/town_centers/savanna_meeting_point_4", new BPos(9, 6, 9));
-        this.put("savanna/zombie/villagers/nitwi", new BPos(1, 3, 1));
+        this.put("savanna/zombie/villagers/nitwit", new BPos(1, 3, 1));
         this.put("savanna/zombie/villagers/unemployed", new BPos(1, 3, 1));
         this.put("snowy/snowy_lamp_post_01", new BPos(3, 4, 1));
         this.put("snowy/snowy_lamp_post_02", new BPos(2, 4, 1));
@@ -1207,7 +1198,7 @@ public class VillageGenerator extends Generator {
         this.put("snowy/town_centers/snowy_meeting_point_2", new BPos(11, 5, 9));
         this.put("snowy/town_centers/snowy_meeting_point_3", new BPos(7, 7, 7));
         this.put("snowy/villagers/baby", new BPos(1, 2, 1));
-        this.put("snowy/villagers/nitwi", new BPos(1, 3, 1));
+        this.put("snowy/villagers/nitwit", new BPos(1, 3, 1));
         this.put("snowy/villagers/unemployed", new BPos(1, 3, 1));
         this.put("snowy/zombie/houses/snowy_medium_house_1", new BPos(7, 6, 8));
         this.put("snowy/zombie/houses/snowy_medium_house_2", new BPos(14, 9, 7));
@@ -1240,100 +1231,100 @@ public class VillageGenerator extends Generator {
         this.put("snowy/zombie/town_centers/snowy_meeting_point_1", new BPos(12, 8, 8));
         this.put("snowy/zombie/town_centers/snowy_meeting_point_2", new BPos(11, 6, 9));
         this.put("snowy/zombie/town_centers/snowy_meeting_point_3", new BPos(7, 7, 7));
-        this.put("snowy/zombie/villagers/nitwi", new BPos(1, 3, 1));
+        this.put("snowy/zombie/villagers/nitwit", new BPos(1, 3, 1));
         this.put("snowy/zombie/villagers/unemployed", new BPos(1, 3, 1));
-        this.put("taiga/taiga_decoration_1", new BPos(3, 2, 6));
-        this.put("taiga/taiga_decoration_2", new BPos(2, 2, 3));
-        this.put("taiga/taiga_decoration_3", new BPos(1, 2, 2));
-        this.put("taiga/taiga_decoration_4", new BPos(1, 2, 2));
-        this.put("taiga/taiga_decoration_5", new BPos(1, 1, 1));
-        this.put("taiga/taiga_decoration_6", new BPos(3, 2, 3));
-        this.put("taiga/taiga_lamp_post_1", new BPos(1, 2, 1));
-        this.put("taiga/houses/taiga_animal_pen_1", new BPos(13, 5, 8));
-        this.put("taiga/houses/taiga_armorer_2", new BPos(7, 8, 7));
-        this.put("taiga/houses/taiga_armorer_house_1", new BPos(10, 7, 7));
-        this.put("taiga/houses/taiga_butcher_shop_1", new BPos(11, 7, 9));
-        this.put("taiga/houses/taiga_cartographer_house_1", new BPos(7, 10, 8));
-        this.put("taiga/houses/taiga_fisher_cottage_1", new BPos(10, 8, 12));
-        this.put("taiga/houses/taiga_fletcher_house_1", new BPos(10, 6, 11));
-        this.put("taiga/houses/taiga_large_farm_1", new BPos(10, 7, 10));
-        this.put("taiga/houses/taiga_large_farm_2", new BPos(8, 7, 9));
-        this.put("taiga/houses/taiga_library_1", new BPos(11, 10, 8));
-        this.put("taiga/houses/taiga_masons_house_1", new BPos(8, 7, 9));
-        this.put("taiga/houses/taiga_medium_house_1", new BPos(8, 11, 7));
-        this.put("taiga/houses/taiga_medium_house_2", new BPos(7, 11, 8));
-        this.put("taiga/houses/taiga_medium_house_3", new BPos(8, 7, 13));
-        this.put("taiga/houses/taiga_medium_house_4", new BPos(9, 7, 9));
-        this.put("taiga/houses/taiga_shepherds_house_1", new BPos(10, 7, 11));
-        this.put("taiga/houses/taiga_small_farm_1", new BPos(7, 7, 8));
-        this.put("taiga/houses/taiga_small_house_1", new BPos(7, 8, 9));
-        this.put("taiga/houses/taiga_small_house_2", new BPos(7, 7, 7));
-        this.put("taiga/houses/taiga_small_house_3", new BPos(7, 7, 7));
-        this.put("taiga/houses/taiga_small_house_4", new BPos(7, 6, 8));
-        this.put("taiga/houses/taiga_small_house_5", new BPos(9, 7, 7));
-        this.put("taiga/houses/taiga_tannery_1", new BPos(9, 6, 9));
-        this.put("taiga/houses/taiga_temple_1", new BPos(13, 14, 11));
-        this.put("taiga/houses/taiga_tool_smith_1", new BPos(11, 6, 8));
-        this.put("taiga/houses/taiga_weaponsmith_1", new BPos(7, 9, 7));
-        this.put("taiga/houses/taiga_weaponsmith_2", new BPos(6, 5, 7));
-        this.put("taiga/streets/corner_01", new BPos(16, 2, 16));
-        this.put("taiga/streets/corner_02", new BPos(16, 2, 16));
-        this.put("taiga/streets/corner_03", new BPos(4, 2, 4));
-        this.put("taiga/streets/crossroad_01", new BPos(16, 2, 16));
-        this.put("taiga/streets/crossroad_02", new BPos(16, 2, 16));
-        this.put("taiga/streets/crossroad_03", new BPos(16, 2, 16));
-        this.put("taiga/streets/crossroad_04", new BPos(4, 2, 5));
-        this.put("taiga/streets/crossroad_05", new BPos(5, 2, 5));
-        this.put("taiga/streets/crossroad_06", new BPos(5, 2, 5));
-        this.put("taiga/streets/straight_01", new BPos(16, 2, 16));
-        this.put("taiga/streets/straight_02", new BPos(16, 2, 16));
-        this.put("taiga/streets/straight_03", new BPos(13, 2, 11));
-        this.put("taiga/streets/straight_04", new BPos(11, 2, 9));
-        this.put("taiga/streets/straight_05", new BPos(20, 2, 17));
-        this.put("taiga/streets/straight_06", new BPos(21, 2, 18));
-        this.put("taiga/streets/turn_01", new BPos(18, 2, 8));
-        this.put("taiga/town_centers/taiga_meeting_point_1", new BPos(22, 3, 18));
-        this.put("taiga/town_centers/taiga_meeting_point_2", new BPos(9, 7, 9));
-        this.put("taiga/villagers/baby", new BPos(1, 2, 1));
-        this.put("taiga/villagers/nitwi", new BPos(1, 3, 1));
-        this.put("taiga/villagers/unemployed", new BPos(1, 3, 1));
-        this.put("taiga/zombie/houses/taiga_cartographer_house_1", new BPos(7, 10, 8));
-        this.put("taiga/zombie/houses/taiga_fisher_cottage_1", new BPos(10, 8, 12));
-        this.put("taiga/zombie/houses/taiga_large_farm_2", new BPos(8, 7, 9));
-        this.put("taiga/zombie/houses/taiga_library_1", new BPos(11, 10, 8));
-        this.put("taiga/zombie/houses/taiga_medium_house_1", new BPos(8, 11, 7));
-        this.put("taiga/zombie/houses/taiga_medium_house_2", new BPos(7, 11, 8));
-        this.put("taiga/zombie/houses/taiga_medium_house_3", new BPos(8, 7, 13));
-        this.put("taiga/zombie/houses/taiga_medium_house_4", new BPos(9, 7, 9));
-        this.put("taiga/zombie/houses/taiga_shepherds_house_1", new BPos(10, 7, 11));
-        this.put("taiga/zombie/houses/taiga_small_house_1", new BPos(7, 8, 9));
-        this.put("taiga/zombie/houses/taiga_small_house_2", new BPos(7, 7, 7));
-        this.put("taiga/zombie/houses/taiga_small_house_3", new BPos(7, 7, 7));
-        this.put("taiga/zombie/houses/taiga_small_house_4", new BPos(7, 6, 8));
-        this.put("taiga/zombie/houses/taiga_small_house_5", new BPos(9, 7, 7));
-        this.put("taiga/zombie/houses/taiga_temple_1", new BPos(13, 14, 11));
-        this.put("taiga/zombie/houses/taiga_tool_smith_1", new BPos(11, 6, 8));
-        this.put("taiga/zombie/houses/taiga_weaponsmith_2", new BPos(6, 5, 7));
-        this.put("taiga/zombie/streets/corner_01", new BPos(16, 2, 16));
-        this.put("taiga/zombie/streets/corner_02", new BPos(16, 2, 16));
-        this.put("taiga/zombie/streets/corner_03", new BPos(4, 2, 4));
-        this.put("taiga/zombie/streets/crossroad_01", new BPos(16, 2, 16));
-        this.put("taiga/zombie/streets/crossroad_02", new BPos(16, 2, 16));
-        this.put("taiga/zombie/streets/crossroad_03", new BPos(16, 2, 16));
-        this.put("taiga/zombie/streets/crossroad_04", new BPos(4, 2, 5));
-        this.put("taiga/zombie/streets/crossroad_05", new BPos(5, 2, 5));
-        this.put("taiga/zombie/streets/crossroad_06", new BPos(5, 2, 5));
-        this.put("taiga/zombie/streets/straight_01", new BPos(16, 2, 16));
-        this.put("taiga/zombie/streets/straight_02", new BPos(16, 2, 16));
-        this.put("taiga/zombie/streets/straight_03", new BPos(13, 2, 11));
-        this.put("taiga/zombie/streets/straight_04", new BPos(11, 2, 9));
-        this.put("taiga/zombie/streets/straight_05", new BPos(20, 2, 17));
-        this.put("taiga/zombie/streets/straight_06", new BPos(21, 2, 18));
-        this.put("taiga/zombie/streets/turn_01", new BPos(18, 2, 8));
-        this.put("taiga/zombie/town_centers/taiga_meeting_point_1", new BPos(22, 6, 18));
-        this.put("taiga/zombie/town_centers/taiga_meeting_point_2", new BPos(9, 7, 9));
-        this.put("taiga/zombie/villagers/nitwi", new BPos(1, 3, 1));
-        this.put("taiga/zombie/villagers/unemployed", new BPos(1, 3, 1));
+        this.put("village/taiga/taiga_decoration_1", new BPos(3, 2, 6));
+        this.put("village/taiga/taiga_decoration_2", new BPos(2, 2, 3));
+        this.put("village/taiga/taiga_decoration_3", new BPos(1, 2, 2));
+        this.put("village/taiga/taiga_decoration_4", new BPos(1, 2, 2));
+        this.put("village/taiga/taiga_decoration_5", new BPos(1, 1, 1));
+        this.put("village/taiga/taiga_decoration_6", new BPos(3, 2, 3));
+        this.put("village/taiga/taiga_lamp_post_1", new BPos(1, 2, 1));
+        this.put("village/taiga/houses/taiga_animal_pen_1", new BPos(13, 5, 8));
+        this.put("village/taiga/houses/taiga_armorer_2", new BPos(7, 8, 7));
+        this.put("village/taiga/houses/taiga_armorer_house_1", new BPos(10, 7, 7));
+        this.put("village/taiga/houses/taiga_butcher_shop_1", new BPos(11, 7, 9));
+        this.put("village/taiga/houses/taiga_cartographer_house_1", new BPos(7, 10, 8));
+        this.put("village/taiga/houses/taiga_fisher_cottage_1", new BPos(10, 8, 12));
+        this.put("village/taiga/houses/taiga_fletcher_house_1", new BPos(10, 6, 11));
+        this.put("village/taiga/houses/taiga_large_farm_1", new BPos(10, 7, 10));
+        this.put("village/taiga/houses/taiga_large_farm_2", new BPos(8, 7, 9));
+        this.put("village/taiga/houses/taiga_library_1", new BPos(11, 10, 8));
+        this.put("village/taiga/houses/taiga_masons_house_1", new BPos(8, 7, 9));
+        this.put("village/taiga/houses/taiga_medium_house_1", new BPos(8, 11, 7));
+        this.put("village/taiga/houses/taiga_medium_house_2", new BPos(7, 11, 8));
+        this.put("village/taiga/houses/taiga_medium_house_3", new BPos(8, 7, 13));
+        this.put("village/taiga/houses/taiga_medium_house_4", new BPos(9, 7, 9));
+        this.put("village/taiga/houses/taiga_shepherds_house_1", new BPos(10, 7, 11));
+        this.put("village/taiga/houses/taiga_small_farm_1", new BPos(7, 7, 8));
+        this.put("village/taiga/houses/taiga_small_house_1", new BPos(7, 8, 9));
+        this.put("village/taiga/houses/taiga_small_house_2", new BPos(7, 7, 7));
+        this.put("village/taiga/houses/taiga_small_house_3", new BPos(7, 7, 7));
+        this.put("village/taiga/houses/taiga_small_house_4", new BPos(7, 6, 8));
+        this.put("village/taiga/houses/taiga_small_house_5", new BPos(9, 7, 7));
+        this.put("village/taiga/houses/taiga_tannery_1", new BPos(9, 6, 9));
+        this.put("village/taiga/houses/taiga_temple_1", new BPos(13, 14, 11));
+        this.put("village/taiga/houses/taiga_tool_smith_1", new BPos(11, 6, 8));
+        this.put("village/taiga/houses/taiga_weaponsmith_1", new BPos(7, 9, 7));
+        this.put("village/taiga/houses/taiga_weaponsmith_2", new BPos(6, 5, 7));
+        this.put("village/taiga/streets/corner_01", new BPos(16, 2, 16));
+        this.put("village/taiga/streets/corner_02", new BPos(16, 2, 16));
+        this.put("village/taiga/streets/corner_03", new BPos(4, 2, 4));
+        this.put("village/taiga/streets/crossroad_01", new BPos(16, 2, 16));
+        this.put("village/taiga/streets/crossroad_02", new BPos(16, 2, 16));
+        this.put("village/taiga/streets/crossroad_03", new BPos(16, 2, 16));
+        this.put("village/taiga/streets/crossroad_04", new BPos(4, 2, 5));
+        this.put("village/taiga/streets/crossroad_05", new BPos(5, 2, 5));
+        this.put("village/taiga/streets/crossroad_06", new BPos(5, 2, 5));
+        this.put("village/taiga/streets/straight_01", new BPos(16, 2, 16));
+        this.put("village/taiga/streets/straight_02", new BPos(16, 2, 16));
+        this.put("village/taiga/streets/straight_03", new BPos(13, 2, 11));
+        this.put("village/taiga/streets/straight_04", new BPos(11, 2, 9));
+        this.put("village/taiga/streets/straight_05", new BPos(20, 2, 17));
+        this.put("village/taiga/streets/straight_06", new BPos(21, 2, 18));
+        this.put("village/taiga/streets/turn_01", new BPos(18, 2, 8));
+        this.put("village/taiga/town_centers/taiga_meeting_point_1", new BPos(22, 3, 18));
+        this.put("village/taiga/town_centers/taiga_meeting_point_2", new BPos(9, 7, 9));
+        this.put("village/taiga/villagers/baby", new BPos(1, 2, 1));
+        this.put("village/taiga/villagers/nitwit", new BPos(1, 3, 1));
+        this.put("village/taiga/villagers/unemployed", new BPos(1, 3, 1));
+        this.put("village/taiga/zombie/houses/taiga_cartographer_house_1", new BPos(7, 10, 8));
+        this.put("village/taiga/zombie/houses/taiga_fisher_cottage_1", new BPos(10, 8, 12));
+        this.put("village/taiga/zombie/houses/taiga_large_farm_2", new BPos(8, 7, 9));
+        this.put("village/taiga/zombie/houses/taiga_library_1", new BPos(11, 10, 8));
+        this.put("village/taiga/zombie/houses/taiga_medium_house_1", new BPos(8, 11, 7));
+        this.put("village/taiga/zombie/houses/taiga_medium_house_2", new BPos(7, 11, 8));
+        this.put("village/taiga/zombie/houses/taiga_medium_house_3", new BPos(8, 7, 13));
+        this.put("village/taiga/zombie/houses/taiga_medium_house_4", new BPos(9, 7, 9));
+        this.put("village/taiga/zombie/houses/taiga_shepherds_house_1", new BPos(10, 7, 11));
+        this.put("village/taiga/zombie/houses/taiga_small_house_1", new BPos(7, 8, 9));
+        this.put("village/taiga/zombie/houses/taiga_small_house_2", new BPos(7, 7, 7));
+        this.put("village/taiga/zombie/houses/taiga_small_house_3", new BPos(7, 7, 7));
+        this.put("village/taiga/zombie/houses/taiga_small_house_4", new BPos(7, 6, 8));
+        this.put("village/taiga/zombie/houses/taiga_small_house_5", new BPos(9, 7, 7));
+        this.put("village/taiga/zombie/houses/taiga_temple_1", new BPos(13, 14, 11));
+        this.put("village/taiga/zombie/houses/taiga_tool_smith_1", new BPos(11, 6, 8));
+        this.put("village/taiga/zombie/houses/taiga_weaponsmith_2", new BPos(6, 5, 7));
+        this.put("village/taiga/zombie/streets/corner_01", new BPos(16, 2, 16));
+        this.put("village/taiga/zombie/streets/corner_02", new BPos(16, 2, 16));
+        this.put("village/taiga/zombie/streets/corner_03", new BPos(4, 2, 4));
+        this.put("village/taiga/zombie/streets/crossroad_01", new BPos(16, 2, 16));
+        this.put("village/taiga/zombie/streets/crossroad_02", new BPos(16, 2, 16));
+        this.put("village/taiga/zombie/streets/crossroad_03", new BPos(16, 2, 16));
+        this.put("village/taiga/zombie/streets/crossroad_04", new BPos(4, 2, 5));
+        this.put("village/taiga/zombie/streets/crossroad_05", new BPos(5, 2, 5));
+        this.put("village/taiga/zombie/streets/crossroad_06", new BPos(5, 2, 5));
+        this.put("village/taiga/zombie/streets/straight_01", new BPos(16, 2, 16));
+        this.put("village/taiga/zombie/streets/straight_02", new BPos(16, 2, 16));
+        this.put("village/taiga/zombie/streets/straight_03", new BPos(13, 2, 11));
+        this.put("village/taiga/zombie/streets/straight_04", new BPos(11, 2, 9));
+        this.put("village/taiga/zombie/streets/straight_05", new BPos(20, 2, 17));
+        this.put("village/taiga/zombie/streets/straight_06", new BPos(21, 2, 18));
+        this.put("village/taiga/zombie/streets/turn_01", new BPos(18, 2, 8));
+        this.put("village/taiga/zombie/town_centers/taiga_meeting_point_1", new BPos(22, 6, 18));
+        this.put("village/taiga/zombie/town_centers/taiga_meeting_point_2", new BPos(9, 7, 9));
+        this.put("village/taiga/zombie/villagers/nitwit", new BPos(1, 3, 1));
+        this.put("village/taiga/zombie/villagers/unemployed", new BPos(1, 3, 1));
     }};
 
     // TODO optimize the hell out of this (with indexes)
@@ -1388,10 +1379,10 @@ public class VillageGenerator extends Generator {
                     return DesertVillageJigsawBlocks.JIGSAW_BLOCKS;
                 case PLAINS:
                     return PlainsVillageJigsawBlock.JIGSAW_BLOCKS;
-                case SAVANNA:
+                /*case SAVANNA:
                     return SavannaVillageJigsawBlocks.JIGSAW_BLOCKS;
                 case SNOWY:
-                    return SnowyVillageJigsawBlocks.JIGSAW_BLOCKS;
+                    return SnowyVillageJigsawBlocks.JIGSAW_BLOCKS;*/
                 case TAIGA:
                     return TaigaVillageJigsawBlocks.JIGSAW_BLOCKS;
             }
@@ -1404,9 +1395,28 @@ public class VillageGenerator extends Generator {
 
                 case PLAINS :
                     return "village/plains/houses/plains_weaponsmith_1";
+                case TAIGA:
+                    return "village/taiga/houses/taiga_weaponsmith_1";
                 default:
                     return "village/desert/houses/desert_weaponsmith_1";
             }
+        }
+
+        public Map<String, Triplet<String, List<Pair<String, Integer>>, PlacementBehaviour>> getPool() {
+            switch(this) {
+                case TAIGA:
+                    return TaigaPool.VILLAGE_POOLS;
+                case DESERT:
+                    return VILLAGE_POOLS;
+                case PLAINS:
+                    return PlainPool.VILLAGE_POOLS;
+                case SAVANNA:
+                    return null;
+                case SNOWY:
+                    return null;
+
+            }
+            return null;
         }
     }
 
@@ -1414,7 +1424,7 @@ public class VillageGenerator extends Generator {
         put(VillageType.DESERT, new JigSawPool(VILLAGE_POOLS.get("village/desert/town_centers").getSecond()));
         put(VillageType.LEGACY, null);
         put(VillageType.PLAINS, new JigSawPool(PlainPool.VILLAGE_POOLS.get("village/plains/town_centers").getSecond()));
-        put(VillageType.TAIGA, null);
+        put(VillageType.TAIGA, new JigSawPool(TaigaPool.VILLAGE_POOLS.get("village/taiga/town_centers").getSecond()));
         put(VillageType.SAVANNA, null);
         put(VillageType.SNOWY, null);
     }};
