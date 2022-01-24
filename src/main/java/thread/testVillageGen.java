@@ -39,11 +39,9 @@ public class testVillageGen implements Runnable{
             for (long structureSeed = startingPoint + offset; structureSeed < 1L << 48; structureSeed += this.totalThreads) {
 
 
-                structureSeed = 128550363197991L;
+                //structureSeed = 21087268964786395L;
+
                 CPos villePos = ville.getInRegion(structureSeed, 0, 0, chunkRand);
-                if(villePos.getX()>5 || villePos.getZ()>5)continue;
-
-
                 //RuinedPortalProperties ruinporp = new RuinedPortalProperties(structureSeed, ruinPosition);
                 //List<ItemStack> coffre = ruinporp.getLoot(chunkRand, version);
                 //System.out.println("found structureseed : " + structureSeed + ", " + ruinPosition.toBlockPos());
@@ -72,22 +70,32 @@ public class testVillageGen implements Runnable{
 
             BPos sPos = new BPos(villePos.getX()*16+7,0,villePos.getZ()*16+7);
             structureSeed = structureSeed & 281474976710655L;
-            for(long seed = 0;seed < 1<<12;seed++) {
+            int numGenerationSucceed = 0;
+            float meanBS = 0;
+            for(long seed = 0;seed < 1<<14;seed++) {
                 long worldSeed = structureSeed | (seed<<48);
-                worldSeed = 128550363197991L;
+                //worldSeed = 21087268964786395L;
                 OverworldBiomeSource bs = new OverworldBiomeSource(version, worldSeed);
                 TerrainGenerator generator = TerrainGenerator.of(Dimension.OVERWORLD, bs);
                 ChunkRand rand = new ChunkRand();
-                if(!(bs.getBiome(sPos)== Biomes.PLAINS ))continue;
+                if(!(bs.getBiome(sPos)== Biomes.TAIGA ))continue;
                 VillageGenerator villeGen = new VillageGenerator(version);
                 if(!villeGen.generate(generator, villePos.getX(),villePos.getZ(),rand))continue;
 
-                if(villeGen.getNumberOfBlackSmith()>1){
-                    System.out.println("worldSeed : " + worldSeed + " structureSeed " + structureSeed);
-                    villeGen.printPieces();
+                int numBS = villeGen.getNumberOfBlackSmith();
+                if(numBS>3){
+                    System.out.println("worldSeed : " + worldSeed + " structureSeed " + structureSeed+" "+numBS);
                 }
-                else System.out.println(villeGen.getNumberOfBlackSmith());
-                villeGen.printPieces();
+                /*else{
+                    villeGen.printPieces();
+                }*/
+                meanBS = (numGenerationSucceed*meanBS+numBS)/(numGenerationSucceed+1);
+                if(numGenerationSucceed>7 &&  meanBS<1){
+                        break;
+
+                }
+                numGenerationSucceed++;
+                //else System.out.println(villeGen.getNumberOfBlackSmith());
 
 
 
