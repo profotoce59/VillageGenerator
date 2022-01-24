@@ -4,10 +4,7 @@ import kaptainwutax.mcutils.util.data.Pair;
 import kaptainwutax.mcutils.util.data.Triplet;
 import properties.VillageGenerator;
 
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public interface TaigaPool {
     public static final Map<String, Triplet<String, List<Pair<String, Integer>>, VillageGenerator.PlacementBehaviour>> VILLAGE_POOLS = new HashMap<String, Triplet<String, List<Pair<String, Integer>>, VillageGenerator.PlacementBehaviour>>() {{
@@ -120,24 +117,24 @@ public interface TaigaPool {
  new Pair<>("village/taiga/taiga_decoration_3", 1),
  new Pair<>("village/taiga/taiga_decoration_4", 1),
  new Pair<>("village/taiga/taiga_decoration_5", 2),
- new Pair<>("village/taiga/taiga_decoration_6", 1)),
- /*new Pair<>(JigsawPiece.feature(Features.SPRUCE), 4),
- new Pair<>(JigsawPiece.feature(Features.PINE), 4), 
- new Pair<>(JigsawPiece.feature(Features.PILE_PUMPKIN), 2), 
- new Pair<>(JigsawPiece.feature(Features.PATCH_TAIGA_GRASS), 4), 
- new Pair<>(JigsawPiece.feature(Features.PATCH_BERRY_BUSH), 1), 
- new Pair<>(JigsawPiece.empty(), 4)),*/ VillageGenerator.PlacementBehaviour.RIGID));
+ new Pair<>("village/taiga/taiga_decoration_6", 1),
+ new Pair<>("village/taiga/spruce", 4),
+ new Pair<>("village/taiga/pine", 4),
+ new Pair<>("village/taiga/pile_pumpkin", 2),
+ new Pair<>("village/taiga/patch_taiga_grass", 4),
+ new Pair<>("village/taiga/patch_berry_bush", 1),
+ new Pair<>("empty", 4)), VillageGenerator.PlacementBehaviour.RIGID));
     put("village/taiga/zombie/decor", new Triplet<>("empty", Arrays.asList(
- new Pair<>("village/taiga/taiga_decoration_1", 4),
- new Pair<>("village/taiga/taiga_decoration_2", 1),
- new Pair<>("village/taiga/taiga_decoration_3", 1),
- new Pair<>("village/taiga/taiga_decoration_4", 1)),
- /*new Pair<>(JigsawPiece.feature(Features.SPRUCE), 4),
- new Pair<>(JigsawPiece.feature(Features.PINE), 4), 
- new Pair<>(JigsawPiece.feature(Features.PILE_PUMPKIN), 2), 
- new Pair<>(JigsawPiece.feature(Features.PATCH_TAIGA_GRASS), 4), 
- new Pair<>(JigsawPiece.feature(Features.PATCH_BERRY_BUSH), 1), 
- new Pair<>(JigsawPiece.empty(), 4)),*/ VillageGenerator.PlacementBehaviour.RIGID));
+            new Pair<>("village/taiga/taiga_decoration_1", 4),
+            new Pair<>("village/taiga/taiga_decoration_2", 1),
+            new Pair<>("village/taiga/taiga_decoration_3", 1),
+            new Pair<>("village/taiga/taiga_decoration_4", 1),
+            new Pair<>("village/taiga/spruce", 4),
+            new Pair<>("village/taiga/pine", 4),
+            new Pair<>("village/taiga/pile_pumpkin", 2),
+            new Pair<>("village/taiga/patch_taiga_grass", 4),
+            new Pair<>("village/taiga/patch_berry_bush", 1),
+            new Pair<>("empty", 4)), VillageGenerator.PlacementBehaviour.RIGID));
     put("village/taiga/villagers", new Triplet<>("empty", Arrays.asList(
  new Pair<>("village/taiga/villagers/nitwit", 1),
  new Pair<>("village/taiga/villagers/baby", 1),
@@ -145,6 +142,47 @@ public interface TaigaPool {
     put("village/taiga/zombie/villagers", new Triplet<>("empty", Arrays.asList(
  new Pair<>("village/taiga/zombie/villagers/nitwit", 1),
  new Pair<>("village/taiga/zombie/villagers/unemployed", 10)), VillageGenerator.PlacementBehaviour.RIGID));
+        put("village/common/cats", new Triplet<>("empty", Arrays.asList(
+                new Pair<>("village/common/animals/cat_black", 1),
+                new Pair<>("village/common/animals/cat_british", 1),
+                new Pair<>("village/common/animals/cat_calico", 1),
+                new Pair<>("village/common/animals/cat_persian", 1),
+                new Pair<>("village/common/animals/cat_ragdoll", 1),
+                new Pair<>("village/common/animals/cat_red", 1),
+                new Pair<>("village/common/animals/cat_siamese", 1),
+                new Pair<>("village/common/animals/cat_tabby", 1),
+                new Pair<>("village/common/animals/cat_white", 1),
+                new Pair<>("village/common/animals/cat_jellie", 1),
+                new Pair<>("empty", 3)
+        ), VillageGenerator.PlacementBehaviour.RIGID));
+        put("village/common/butcher_animals", new Triplet<>("empty", Arrays.asList(
+                new Pair<>("village/common/animals/cows_1", 3),
+                new Pair<>("village/common/animals/pigs_1", 3),
+                new Pair<>("village/common/animals/sheep_1", 1),
+                new Pair<>("village/common/animals/sheep_2", 1)
+        ), VillageGenerator.PlacementBehaviour.RIGID));
+        put("village/common/iron_golem", new Triplet<>("empty", Collections.singletonList(
+                new Pair<>("village/common/iron_golem", 1)
+        ), VillageGenerator.PlacementBehaviour.RIGID));
+        put("empty", new Triplet<>("empty",Collections.singletonList(
+                new Pair<>("empty", 0)
+        ), VillageGenerator.PlacementBehaviour.RIGID));
+        put("village/common/animals", new Triplet<>("empty", Arrays.asList(
+                new Pair<>("common/animals/cows_1", 7),
+                new Pair<>("common/animals/pigs_1", 7),
+                new Pair<>("common/animals/horses_1", 1),
+                new Pair<>("common/animals/horses_2", 1),
+                new Pair<>("common/animals/horses_3", 1),
+                new Pair<>("common/animals/horses_4", 1),
+                new Pair<>("common/animals/horses_5", 1),
+                new Pair<>("common/animals/sheep_1", 1),
+                new Pair<>("common/animals/sheep_2", 1),
+                new Pair<>("empty", 5)
+        ), VillageGenerator.PlacementBehaviour.RIGID));
+        put("village/common/sheep", new Triplet<>("empty", Arrays.asList(
+                new Pair<>("common/animals/sheep_1", 1),
+                new Pair<>("common/animals/sheep_2", 1)
+        ), VillageGenerator.PlacementBehaviour.RIGID));
 
 
 }};}
