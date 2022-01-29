@@ -146,7 +146,7 @@ public interface TaigaPool {
                 new Pair<>("village/common/animals/cat_black", 1),
                 new Pair<>("village/common/animals/cat_british", 1),
                 new Pair<>("village/common/animals/cat_calico", 1),
-                new Pair<>("village/common/animals/cat_persian", 1),
+                new Pair<>("village/common/animals/cat_persia", 1),
                 new Pair<>("village/common/animals/cat_ragdoll", 1),
                 new Pair<>("village/common/animals/cat_red", 1),
                 new Pair<>("village/common/animals/cat_siamese", 1),
