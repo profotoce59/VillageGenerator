@@ -27,7 +27,7 @@ import reecriture.VillagePools.*;
 import java.util.*;
 
 public class VillageGenerator extends Generator {
-    public List<Piece> pieces = new ArrayList<Piece>();
+    public List<Piece> pieces;
     private VillageType villageType;
 
     public VillageGenerator(MCVersion version) {
@@ -36,30 +36,25 @@ public class VillageGenerator extends Generator {
 
     @Override
     public boolean generate(TerrainGenerator generator, int chunkX, int chunkZ, ChunkRand rand) {
+        pieces = new ArrayList<Piece>();
         rand = rand.asChunkRandDebugger();
-        //System.out.println(rand.nextInt());
-        // check the structure
         Village village = new Village(this.getVersion());
         // instantiate the biome type
         if(!village.canSpawn(chunkX, chunkZ, generator.getBiomeSource())) return false;
-        Biome biome = Biomes.TAIGA;
+        Biome biome = gengenerator.getBiomeSource().getBiome(chunkX*16,0,chunkZ*16);
         this.villageType = VillageType.getType(biome, generator.getVersion());
-        // compute the rotation
         rand.setCarverSeed(generator.getWorldSeed(), chunkX, chunkZ, generator.getVersion());
         BlockRotation rotation = BlockRotation.getRandom(rand);
-
-        // compute the template
-
         JigSawPool jigSawPool = STARTS.get(villageType);
         LinkedList<String> g = jigSawPool.getTemplates();
         String template = rand.getRandom(jigSawPool.getTemplates());
         // get the information about the structure
+        //if(!template.equals("village/taiga/town_centers/taiga_meeting_point_2"))return false;  //to get only the biggest villages
         BPos size = STRUCTURE_SIZE.get(template);
         BPos bPos = new CPos(chunkX, chunkZ).toBlockPos(0);
         BlockBox box = BlockBox.getBoundingBox(bPos, rotation, BPos.ORIGIN, BlockMirror.NONE, size);
         int centerX = (box.minX + box.maxX) / 2;
         int centerZ = (box.minZ + box.maxZ) / 2;
-        // startToHeightmap true except bastion
         int y = bPos.getY() + generator.getHeightOnGround(centerX, centerZ);
         int centerY = box.minY + 1;
 
@@ -78,9 +73,7 @@ public class VillageGenerator extends Generator {
         assembler.placing.addLast(piece);
         while(!assembler.placing.isEmpty()) {
             assembler.tryPlacing(villageType, assembler.placing.removeFirst(), rand, true);
-            //System.out.println("while");
         }
-        //System.out.println("fini le village");
         return true;
     }
     String removeDesert(String a){
@@ -142,7 +135,7 @@ public class VillageGenerator extends Generator {
                 }
             }
 
-            else /*if((this.name).substring(8,14).equals("common"))*/{
+            else {
                 List<Pair<Quad<String, String, String, Block>, BPos>> listtmp = CommonVillageJigsawBlocks.JIGSAW_BLOCKS.get(removeDesert(this.name));
                 if(listtmp != null) {
                     Quad<String, String, String, Block> nbt2 = listtmp.get(0).getFirst();
@@ -152,10 +145,6 @@ public class VillageGenerator extends Generator {
                 else list.add(new BlockJigsawInfo(new Quad<String, String, String, Block>("empty", "bottom", "down_south", Blocks.STRUCTURE_VOID),offset,rotation));
 
             }
-            //else list = Collections.emptyList();
-
-
-            //Collections.shuffle(list,rand.toRandom());
             rand.shuffle(list);
             return list;
 
@@ -230,7 +219,7 @@ public class VillageGenerator extends Generator {
             label139:
 
             for (BlockJigsawInfo blockJigsawInfo : piece.getShuffledJigsawBlocks(villageType, pos, rand)) {
-                //System.out.println("apres getShuffledJigsawBlocks "+ rand.nextInt());
+
                 BlockDirection blockDirection = blockJigsawInfo.getFront();
                 BPos blockPos = blockJigsawInfo.pos;
                 BPos relativeBlockPos = new BPos(blockPos.getX() + blockDirection.getVector().getX(),
@@ -245,12 +234,11 @@ public class VillageGenerator extends Generator {
                     if (fallbackPool != null && fallbackPool.getSecond().size() != 0) {
                         JigSawPool jigSawPool1 = new JigSawPool(pool.getSecond());
                         JigSawPool jigSawPool2 = new JigSawPool(fallbackPool.getSecond());
-                        //String template = rand.getRandom(jigSawPool.getTemplates());
                         boolean isInside = box.contains(relativeBlockPos);
                         VoxelShape mutableobject1;
                         int l;
                         if (isInside) {
-                            mutableobject1 = mutableobject;//mutable object pas set alors qu'il le devrait
+                            mutableobject1 = mutableobject;
                             l = 72;
                             if (mutableobject.isNull()) {
                                 mutableobject.setValue(box,true);
@@ -263,29 +251,28 @@ public class VillageGenerator extends Generator {
                         LinkedList<String> list = new LinkedList<String>();
                         if (depth != this.maxDepth) {
                             list = jigSawPool1.getTemplates();
-                            //System.out.println("avant rand.shuffle"+ rand.nextInt());
                             if(list.size() !=0) {
                                 rand.shuffle(list);
                                 rand.advance(1);
                             }
-                            //System.out.println("apres rand.shuffle"+ rand.nextInt());
                         }
                         LinkedList<String> listtmp = jigSawPool2.getTemplates();
                         if(listtmp.size() !=0) {
                             rand.shuffle(listtmp);
                             rand.advance(1);
                         }
-                        /*int tmp = rand.nextInt();
-                        System.out.println("apres listaddAll 2 "+ tmp);
-                        if (tmp == -1737376018){
-                            System.out.println("test");
-                        }*/
                             list.addAll(listtmp);
                         for (String jigsawpiece1 : list) {
-                            if (jigsawpiece1 == "empty") break;
+
+                            if (jigsawpiece1 == "empty"){
+
+                                break;
+                            }
+
+
                             for (BlockRotation rotation1 : BlockRotation.getShuffled(rand) ) {
                                 BPos size1 = STRUCTURE_SIZE.get(jigsawpiece1);
-                                 //le retirer plus tard on s'en fou des villageois
+                                 //le retirer plus tard on s'en fou des villageois ?
                                 BlockBox box1;
                                 if(size1 == null){
                                     box1 = new BlockBox(0,0,0,0,0,0);
@@ -294,14 +281,9 @@ public class VillageGenerator extends Generator {
                                     box1 = BlockBox.getBoundingBox(BPos.ORIGIN, rotation1, BPos.ORIGIN, BlockMirror.NONE, size1);
                                 }
                                 Piece piece1 = new Piece(jigsawpiece1, BPos.ORIGIN, box1, rotation1, pool.getThird(),0); //problème quand c'est un terminator
-                                /*tmp =  rand.nextInt();
-                                if (tmp == -1314111507){
-                                    System.out.println("test");
-                                }
-                                System.out.println("avant getShuffledJigsawBlocks2 "+ tmp);*/
                                 List<BlockJigsawInfo> list1 = piece1.getShuffledJigsawBlocks(villageType, BPos.ORIGIN, rand);
                                 int i1;
-                                if (expansionHack && box1.getYSpan() <= 16) {//erreur ici avec i1
+                                if (expansionHack && box1.getYSpan() <= 16) {
                                     i1 = list1.stream().mapToInt((p_242841_2_) -> {
                                         BlockDirection dirtmp = p_242841_2_.getFront();
                                         BPos relativetmp = new BPos(p_242841_2_.pos.getX() + dirtmp.getVector().getX(),
@@ -338,8 +320,10 @@ public class VillageGenerator extends Generator {
                                 } else {
                                     i1 = 0;
                                 }
+
                                 for (BlockJigsawInfo blockJigsawInfo2 : list1) {
                                     if (BlockJigsawInfo.canAttach(blockJigsawInfo, blockJigsawInfo2)) {
+
                                         BPos blockPos3 = blockJigsawInfo2.pos;
                                         BPos blockPos4 = new BPos(relativeBlockPos.getX() - blockPos3.getX(),
                                                 relativeBlockPos.getY() - blockPos3.getY(), relativeBlockPos.getZ() - blockPos3.getZ());
@@ -360,6 +344,7 @@ public class VillageGenerator extends Generator {
                                             i2 = minY + l1;
                                         } else {
                                             if (state == -1) {
+
                                                 state = this.generator.getFirstHeightInColumn(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
 
                                             }
@@ -373,15 +358,10 @@ public class VillageGenerator extends Generator {
                                             int k2 = Math.max(i1 + 1, box3.maxY - box3.minY);
                                             box3.maxY = box3.minY + k2;
                                         }
+
                                         if (!isNotEmpty(mutableobject1, new VoxelShape(box3, 0.25D), BoolFunc.ONLYSECOND)) {
                                             mutableobject1.setValue(joinUnoptimized(mutableobject1,new VoxelShape(box3,true),BoolFunc.ONLYFIRST));
-                                            int j3 = 1; // pas tester pour toutes les valeurs
-                                            /*if(isInside){
-                                                mutableobject = mutableobject1;
-                                            }
-                                            else{
-                                                piece.voxelShape = mutableobject1;
-                                            }*/
+                                            int j3 = 1;
                                             int l2;
                                             if(flag2){
                                                 l2 =  j3-l1;
@@ -395,7 +375,6 @@ public class VillageGenerator extends Generator {
                                                 this.pieces.add(piece2);
                                                 piece2.setVoxelShape(mutableobject1);
                                                 this.placing.addLast(piece2);
-                                                //System.out.println("piece ajoutée"+piece2.name);
                                             }
                                             continue label139;
                                         }
@@ -497,6 +476,16 @@ public class VillageGenerator extends Generator {
         int nb = 0;
         for (Piece piece : this.pieces){
             if(piece.name.equals(villageType.getBlackSmithName()))nb++;
+        }
+        return nb;
+    }
+    public int getNumberOfHouses(){
+        int nb = 0;
+        for (Piece piece : this.pieces) {
+            if (piece.name.length() > 21) {
+                String a = piece.name.substring(0,20);
+                if (a.equals(villageType.getHouseName())) nb++;
+            }
         }
         return nb;
     }
@@ -827,21 +816,6 @@ public class VillageGenerator extends Generator {
         ), PlacementBehaviour.RIGID));
     }};
 
-    //import nbtlib
-    //from pathlib import *
-    //import sys
-    //
-    //p = Path(r'.').glob('**/*.nbt')
-    //files = [x for x in p if x.is_file()]
-    //for file in files:
-    //    nbt_file=nbtlib.load(file)
-    //    root=nbt_file.root
-    //    if "size" in root.keys():
-    //        parents=str(file.parents[0]).replace("\\","/")
-    //        print(f'STRUCTURE_SIZE.put("{parents}/{file.name.rstrip(".nbt")}",new BPos({",".join(map(str,map(int,root["size"])))}));')
-    //    else:
-    //        print(f'Missing size key for {file.parents[-1]}/{file.name.rstrip(".nbt")}')
-    //        sys.exit(1)
     private static final HashMap<String, BPos> STRUCTURE_SIZE = new HashMap<String, BPos>() {{
         this.put("village/common/iron_golem", new BPos(1, 3, 1));
         this.put("village/common/well_bottom", new BPos(4, 3, 4));
@@ -1327,7 +1301,6 @@ public class VillageGenerator extends Generator {
         this.put("village/taiga/zombie/villagers/unemployed", new BPos(1, 3, 1));
     }};
 
-    // TODO optimize the hell out of this (with indexes)
     public static class JigSawPool {
         private final LinkedList<String> templates = new LinkedList<>();
 
@@ -1380,7 +1353,7 @@ public class VillageGenerator extends Generator {
                 case PLAINS:
                     return PlainsVillageJigsawBlock.JIGSAW_BLOCKS;
                 /*case SAVANNA:
-                    return SavannaVillageJigsawBlocks.JIGSAW_BLOCKS;
+                    return SavannaVillageJigsawBlocks.JIGSAW_BLOCKS; not implemented yet
                 case SNOWY:
                     return SnowyVillageJigsawBlocks.JIGSAW_BLOCKS;*/
                 case TAIGA:
@@ -1399,6 +1372,19 @@ public class VillageGenerator extends Generator {
                     return "village/taiga/houses/taiga_weaponsmith_1";
                 default:
                     return "village/desert/houses/desert_weaponsmith_1";
+            }
+        }
+        public String getHouseName(){
+            switch(this){
+                case DESERT :
+                    return "village/desert/houses";
+
+                case PLAINS :
+                    return "village/plains/houses";
+                case TAIGA:
+                    return "village/taiga/houses";
+                default:
+                    return "village/desert/houses";
             }
         }
 
