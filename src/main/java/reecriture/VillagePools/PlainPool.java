@@ -145,17 +145,17 @@ public interface PlainPool {
             new Pair<>("village/oak", 1)
         ), VillageGenerator.PlacementBehaviour.RIGID));
     put("village/plains/decor", new Triplet<>("empty", Arrays.asList(
-            new Pair<>("plains/plains_lamp_1", 2),
-                new Pair<>("oak", 1),
-                        new Pair<>("flower_plain", 1),
-                        new Pair<>("pile_hay", 1),
+            new Pair<>("village/plains/plains_lamp_1", 2),
+                new Pair<>("village/oak", 1),
+                        new Pair<>("village/flower_plain", 1),
+                        new Pair<>("village/pile_hay", 1),
                         new Pair<>("empty", 2)
                         ), VillageGenerator.PlacementBehaviour.RIGID));
     put("village/plains/zombie/decor", new Triplet<>("empty", Arrays.asList(
-            new Pair<>("plains/plains_lamp_1", 1),
-                new Pair<>("oak", 1),
-                        new Pair<>("flower_plain", 1),
-                        new Pair<>("pile_hay", 1),
+            new Pair<>("village/plains/plains_lamp_1", 1),
+                new Pair<>("village/oak", 1),
+                        new Pair<>("village/flower_plain", 1),
+                        new Pair<>("village/pile_hay", 1),
                         new Pair<>("empty", 2)
                         ), VillageGenerator.PlacementBehaviour.RIGID));
     put("village/plains/villagers", new Triplet<>("empty", Arrays.asList(
