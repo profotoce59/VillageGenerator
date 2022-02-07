@@ -31,7 +31,7 @@ public class WorldSeedThread implements Runnable{
             ChunkRand chunkRand = new ChunkRand();
             Village ville = new Village(version);
             //CPos villePos = ville.getInRegion(structureSeed, 0, 0, chunkRand);
-            CPos villePos = new CPos(2027,1270);
+            CPos villePos = new CPos(822,388);
                 //RuinedPortalProperties ruinporp = new RuinedPortalProperties(structureSeed, ruinPosition);
                 //List<ItemStack> coffre = ruinporp.getLoot(chunkRand, version);
                 //System.out.println("found structureseed : " + structureSeed + ", " + ruinPosition.toBlockPos());
@@ -75,9 +75,10 @@ public class WorldSeedThread implements Runnable{
                 if(!(bs.getBiome(sPos2)== Biomes.TAIGA /*&& bs.getBiome(sPos1)== Biomes.TAIGA && bs.getBiome(sPos2)== Biomes.TAIGA && bs.getBiome(sPos3)== Biomes.TAIGA */))continue;
                 VillageGenerator villeGen = new VillageGenerator(version);
                 if(!villeGen.generate(generator, villePos.getX(),villePos.getZ(),rand))continue;
-
+                meanBS++;
+                //System.out.println(meanBS);
                 int numBS = villeGen.getNumberOfBlackSmith();
-                if(numBS>6){
+                if(numBS>2){
                     System.out.println("worldSeed : " + worldSeed + " structureSeed " + structureSeed+" "+numBS);
                 }
                 else {
