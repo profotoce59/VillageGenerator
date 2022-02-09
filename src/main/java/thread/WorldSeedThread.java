@@ -78,7 +78,7 @@ public class WorldSeedThread implements Runnable{
                 meanBS++;
                 //System.out.println(meanBS);
                 int numBS = villeGen.getNumberOfBlackSmith();
-                if(numBS>2){
+                if(numBS>1){
                     System.out.println("worldSeed : " + worldSeed + " structureSeed " + structureSeed+" "+numBS);
                 }
                 else {

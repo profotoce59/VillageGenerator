@@ -16,7 +16,8 @@ public class IDoubleListMerger implements IMerger{
         return this.result;
     }
     public boolean forMergedIndexes(IDoubleListMerger.IConsumer p_197855_1_) {
-        for(int i = 0; i < this.result.size() - 1; ++i) {
+        int size = this.result.size();
+        for(int i = 0; i <size  - 1; ++i) {
             if (!p_197855_1_.merge(this.firstIndices.get(i), this.secondIndices.get(i), i)) {
                 return false;
             }

@@ -35,6 +35,7 @@ public class VillageGenerator extends Generator {
     @Override
     public boolean generate(TerrainGenerator generator, int chunkX, int chunkZ, ChunkRand rand) {
         Biome biome = generator.getBiomeSource().getBiome(chunkX*16,0,chunkZ*16);
+        if(!Biomes.TAIGA.equals(biome))return false;
         this.villageType = VillageType.getType(biome, generator.getVersion());
         if(this.villageType == null)return false;
         pieces = new ArrayList<>();
@@ -47,7 +48,7 @@ public class VillageGenerator extends Generator {
 
         JigSawPool jigSawPool = STARTS.get(villageType);
         String template = rand.getRandom(jigSawPool.getTemplates());
-        //if(!template.equals("taiga/town_centers/taiga_meeting_point_2"))return false;  //to get the max number of street
+        if(!template.equals("taiga/town_centers/taiga_meeting_point_2"))return false;  //to get the max number of street
         BPos size = STRUCTURE_SIZE.get(template);
         BPos bPos = new CPos(chunkX, chunkZ).toBlockPos(0);
         BlockBox box = BlockBox.getBoundingBox(bPos, rotation, BPos.ORIGIN, BlockMirror.NONE, size);
@@ -206,8 +207,8 @@ public class VillageGenerator extends Generator {
                     NoiseSettings.create(0.9999999814507745, 0.9999999814507745, 80.0, 160.0)
                             .addTopSlide(-10, 3, 0)
                             .addBottomSlide(-30, 0, 0),
-                    1.0D, -0.46875D, true
-            );
+                    1.0D, -0.46875D, true,13);
+            /* ------- //13 -> 13*8 = 104 si le village est plus que 104, il y aura une mauvaise gen, mais permet d'optimiser de beaucoup.*/
         }
 
         public void tryPlacing(VillageType villageType, Piece piece, ChunkRand rand, boolean expansionHack) {
@@ -330,9 +331,9 @@ public class VillageGenerator extends Generator {
                                             i2 = minY + l1;
                                         } else {
                                             if (state == -1) {
-                                                state = this.generator.getFirstHeightInColumn(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
+                                                //int state1 = this.generator.getFirstHeightInColumn(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
                                                 /* ------------------should be 3 time faster but it's not -------------------------*/
-                                                //state = this.sGen.generateColumnfromY(blockPos.getX(),13, blockPos.getZ(),(block) -> block != Blocks.AIR);
+                                                state = this.sGen.generateColumnfromY(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
                                             }
                                             i2 = state - k1;
                                         }

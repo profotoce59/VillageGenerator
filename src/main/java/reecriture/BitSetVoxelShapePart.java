@@ -31,43 +31,29 @@ public class BitSetVoxelShapePart {
     }
     public static BitSetVoxelShapePart join(VoxelShape voxelShape, VoxelShape voxelShape1, IDoubleListMerger doubleListMerger, IDoubleListMerger doubleListMerger2, IDoubleListMerger doubleListMerger3, BoolFunc func) {
         BitSetVoxelShapePart bitsetvoxelshapepart = new BitSetVoxelShapePart(doubleListMerger.getList().size() - 1, doubleListMerger2.getList().size() - 1, doubleListMerger3.getList().size() - 1);
-        int[] aint = new int[]{Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE, Integer.MIN_VALUE};
+
         doubleListMerger.forMergedIndexes((p_199628_7_, p_199628_8_, p_199628_9_) -> {
-            boolean[] aboolean = new boolean[]{false};
             boolean flag = doubleListMerger2.forMergedIndexes((p_199627_10_, p_199627_11_, p_199627_12_) -> {
-                boolean[] aboolean1 = new boolean[]{false};
-                boolean flag1 = doubleListMerger3.forMergedIndexes((p_199629_12_, p_199629_13_, p_199629_14_) -> {
+                boolean flag1;
+                if (doubleListMerger3.forMergedIndexes((p_199629_12_, p_199629_13_, p_199629_14_) -> {
                     boolean flag2 = func.apply(voxelShape.isFullWide(p_199628_7_, p_199627_10_, p_199629_12_), voxelShape1.isFullWide(p_199628_8_, p_199627_11_, p_199629_13_));
                     if (flag2) {
                         bitsetvoxelshapepart.storage.set(bitsetvoxelshapepart.getIndex(p_199628_9_, p_199627_12_, p_199629_14_));
-                        aint[2] = Math.min(aint[2], p_199629_14_);
-                        aint[5] = Math.max(aint[5], p_199629_14_);
-                        aboolean1[0] = true;
                     }
 
                     return true;
-                });
-                if (aboolean1[0]) {
-                    aint[1] = Math.min(aint[1], p_199627_12_);
-                    aint[4] = Math.max(aint[4], p_199627_12_);
-                    aboolean[0] = true;
-                }
-
+                })) flag1 = true;
+                else flag1 = false;
                 return flag1;
             });
-            if (aboolean[0]) {
-                aint[0] = Math.min(aint[0], p_199628_9_);
-                aint[3] = Math.max(aint[3], p_199628_9_);
-            }
-
             return flag;
         });
-        bitsetvoxelshapepart.xMin = aint[0];
-        bitsetvoxelshapepart.yMin = aint[1];
-        bitsetvoxelshapepart.zMin = aint[2];
-        bitsetvoxelshapepart.xMax = aint[3] + 1;
-        bitsetvoxelshapepart.yMax = aint[4] + 1;
-        bitsetvoxelshapepart.zMax = aint[5] + 1;
+        bitsetvoxelshapepart.xMax = bitsetvoxelshapepart.xMin;
+        bitsetvoxelshapepart.yMax = bitsetvoxelshapepart.yMin;
+        bitsetvoxelshapepart.zMax = bitsetvoxelshapepart.zMin;
+        bitsetvoxelshapepart.xMin = 0;
+        bitsetvoxelshapepart.yMin = 0;
+        bitsetvoxelshapepart.zMin = 0;
         return bitsetvoxelshapepart;
     }
     protected int getIndex(int a, int b, int c) {
@@ -98,4 +84,5 @@ public class BitSetVoxelShapePart {
     public BitSet getStorage(){
         return this.storage;
     }
+
 }
