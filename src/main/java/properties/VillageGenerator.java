@@ -63,7 +63,8 @@ public class VillageGenerator extends Generator {
         piece.setBoundsTop(y + 80);
         BlockBox fullBox = new BlockBox(centerX - 80, y - 80, centerZ - 80, centerX + 80 + 1, y + 80 + 1, centerZ + 80 + 1);
         Assembler assembler = new Assembler(6, generator,this.pieces);
-        VoxelShape a = assembler.joinUnoptimized(new VoxelShape(fullBox),new VoxelShape(box,true),BoolFunc.ONLYFIRST);
+        VoxelShape a = new VoxelShape(fullBox);
+        a.fullBoxes.add(new BlockBox(box.minX,box.minY,box.minZ,box.maxX+1,box.maxY+1,box.maxZ+1));
         piece.voxelShape = a;
         assembler.placing.addLast(piece);
         while(!assembler.placing.isEmpty()) {
@@ -284,7 +285,6 @@ public class VillageGenerator extends Generator {
                                 int i1;
                                 if (expansionHack && box1.getYSpan() <= 16) {
                                     i1 = list1.stream().mapToInt((p_242841_2_) -> {
-
                                         BlockDirection dirtmp = p_242841_2_.getFront();
                                         BPos relativetmp = new BPos(p_242841_2_.pos.getX() + dirtmp.getVector().getX(),
                                                 p_242841_2_.pos.getY() + dirtmp.getVector().getY(),
@@ -332,7 +332,6 @@ public class VillageGenerator extends Generator {
                                         } else {
                                             if (state == -1) {
                                                 //int state1 = this.generator.getFirstHeightInColumn(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
-                                                /* ------------------should be 3 time faster but it's not -------------------------*/
                                                 state = this.sGen.generateColumnfromY(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
                                             }
                                             i2 = state - k1;
@@ -345,8 +344,9 @@ public class VillageGenerator extends Generator {
                                             int k2 = Math.max(i1 + 1, box3.maxY - box3.minY);
                                             box3.maxY = box3.minY + k2;
                                         }
-                                        if (!isNotEmpty(mutableobject1, new VoxelShape(box3, 0.25D))) {
-                                            mutableobject1.setValue(joinUnoptimized(mutableobject1,new VoxelShape(box3,true),BoolFunc.ONLYFIRST));
+                                        if (isNotEmpty(mutableobject1,box3)) {
+                                            mutableobject1.fullBoxes.add(new BlockBox(box3.minX,box3.minY,box3.minZ,
+                                                    box3.maxX+1,box3.maxY+1,box3.maxZ+1));
                                             Piece piece2 = new Piece(jigsawpiece1,blockpos5,box3,rotation1,piece1.placementBehaviour,depth+1);
                                             if(depth+1<= this.maxDepth){
                                                 this.pieces.add(piece2);
@@ -369,62 +369,20 @@ public class VillageGenerator extends Generator {
 
             }
         }
-
-        private boolean isNotEmpty(VoxelShape voxelShape, VoxelShape voxelShape1) {
-            IDoubleListMerger idoublelistmerger = createIndirectMerger(voxelShape.getCoords(0), voxelShape1.getCoords(0), false, true);
-            IDoubleListMerger iDouleListMerger1 = createIndirectMerger(voxelShape.getCoords(1), voxelShape1.getCoords(1), false, true);
-            IDoubleListMerger idoublelistmerger2 = createIndirectMerger(voxelShape.getCoords(2), voxelShape1.getCoords(2), false, true);
-            return !idoublelistmerger.forMergedIndexes((p_199861_5_, p_199861_6_, p_199861_7_) -> {
-                return iDouleListMerger1.forMergedIndexes((p_199860_6_, p_199860_7_, p_199860_8_) -> {
-                    return idoublelistmerger2.forMergedIndexes((p_199862_7_, p_199862_8_, p_199862_9_) -> {
-                        return !BoolFunc.ONLYSECOND.apply(voxelShape.isFullWide(p_199861_5_, p_199860_6_, p_199862_7_), voxelShape1.isFullWide(p_199861_6_, p_199860_7_, p_199862_8_));
-                    });
-                });
-
-            });
-        }
-
-        public VoxelShape joinUnoptimized(VoxelShape voxelShape, VoxelShape voxelShape1, BoolFunc func) {
-            IDoubleListMerger idoublelistmerger = createIndirectMerger(voxelShape.getCoords(0), voxelShape1.getCoords(0), true, false);
-            IDoubleListMerger idoublelistmerger1 = createIndirectMerger(voxelShape.getCoords(1), voxelShape1.getCoords(1), true, false);
-            IDoubleListMerger idoublelistmerger2 = createIndirectMerger(voxelShape.getCoords(2), voxelShape1.getCoords(2), true, false);
-            BitSetVoxelShapePart bitsetvoxelshapepart = BitSetVoxelShapePart.join(voxelShape, voxelShape1, idoublelistmerger, idoublelistmerger1, idoublelistmerger2, func);
-            return new VoxelShape(bitsetvoxelshapepart, idoublelistmerger.getList(), idoublelistmerger1.getList(), idoublelistmerger2.getList());
-        }
-
-        private IDoubleListMerger createIndirectMerger(List<Double> pair1, List<Double> pair2, boolean flag3, boolean flag4) {
-            int i = 0;
-            int j = 0;
-            double d0 = Double.NaN;
-            int k = pair1.size();
-            int l = pair2.size();
-            List<Double> result = new ArrayList<>();
-            List<Integer> firstIndices = new ArrayList<>();
-            List<Integer> secondIndices = new ArrayList<>();
-            while (true) {
-                boolean flag = i < k;
-                boolean flag1 = j < l;
-                if (!flag && !flag1) {
-                    if (result.isEmpty()) {
-                        result.add(Math.min(pair1.get(k - 1), pair2.get(l - 1)));
-                    }
-                    return new IDoubleListMerger(result, firstIndices, secondIndices);
-                }
-                boolean flag2 = flag && (!flag1 || pair1.get(i) < pair2.get(j) + 1.0E-7D);
-                double d1 = flag2 ? pair1.get(i++) : pair2.get(j++);
-                if ((i != 0 && flag || flag2 || flag4) && (j != 0 && flag1 || !flag2 || flag3)) {
-                    if (!(d0 >= d1 - 1.0E-7D)) {
-                        firstIndices.add(i - 1);
-                        secondIndices.add(j - 1);
-                        result.add(d1);
-                        d0 = d1;
-                    } else if (!result.isEmpty()) {
-                        firstIndices.set(firstIndices.size() - 1, i - 1);
-                        secondIndices.set(secondIndices.size() - 1, j - 1);
-                    }
+        private boolean isNotEmpty(VoxelShape voxelShape,BlockBox box1) {
+            if(box1.minX<voxelShape.getX().get(0) || box1.minY<voxelShape.getY().get(0) || box1.minZ<voxelShape.getZ().get(0)
+                    || box1.maxX>=voxelShape.getLastX() || box1.maxY>=voxelShape.getLastY() || box1.maxZ>=voxelShape.getLastZ()
+        )return false;
+            for (BlockBox fullBoxe: voxelShape.fullBoxes){
+                if(intersects2(box1,fullBoxe)){
+                    return false;
                 }
             }
+            return true;
 
+        }
+        public boolean intersects2(BlockBox box1,BlockBox box) {
+            return box1.maxX >= box.minX && box1.minX < box.maxX && box1.maxZ >= box.minZ && box1.minZ < box.maxZ && box1.maxY >= box.minY && box1.minY < box.maxY;
         }
     }
 

@@ -73,10 +73,10 @@ public class testVillageGen implements Runnable{
                 for (CPos sPos : villePosList){
                     ChunkRand rand = new ChunkRand();
                     if(!villeGen.generate(generator, sPos.getX(),sPos.getZ(),rand))continue;
-                    numGenerationSucceed++;
-                    System.out.println(numGenerationSucceed);
+                    //numGenerationSucceed++;
+                    //System.out.println(numGenerationSucceed);
                     int numBS = villeGen.getNumberOfBlackSmith();
-                    if(numBS>5){
+                    if(numBS>3){
                         System.out.println("worldSeed : " + worldSeed + " structureSeed " + structureSeed+" "+numBS+" /tp "+sPos.getX()*16+" 80 "+sPos.getZ()*16);
                     }
                     else{

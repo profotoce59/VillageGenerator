@@ -30,8 +30,8 @@ public class WorldSeedThread implements Runnable{
             //System.out.println("Started WorldSeedThread "+(offset+1)+"/"+totalThreads);
             ChunkRand chunkRand = new ChunkRand();
             Village ville = new Village(version);
-            //CPos villePos = ville.getInRegion(structureSeed, 0, 0, chunkRand);
-            CPos villePos = new CPos(822,388);
+            CPos villePos = ville.getInRegion(structureSeed, 0, 0, chunkRand);
+            //CPos villePos = new CPos(5,10);
                 //RuinedPortalProperties ruinporp = new RuinedPortalProperties(structureSeed, ruinPosition);
                 //List<ItemStack> coffre = ruinporp.getLoot(chunkRand, version);
                 //System.out.println("found structureseed : " + structureSeed + ", " + ruinPosition.toBlockPos());
