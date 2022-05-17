@@ -1,5 +1,5 @@
 package reecriture.VillagePools;
-##give directly the height of a structure to avoid to calculate it as in mc code which took a while
+//give directly the height of a structure to avoid to calculate it as in mc code which took a while
 import java.util.HashMap;
 
 public class VillagePoolYMax {
