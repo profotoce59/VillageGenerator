@@ -1,5 +1,5 @@
 package reecriture.VillagePools;
-
+//every structure used for different type of Village
 import kaptainwutax.mcutils.block.Block;
 import kaptainwutax.mcutils.block.Blocks;
 import kaptainwutax.mcutils.util.data.Pair;
