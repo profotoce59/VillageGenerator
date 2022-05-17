@@ -35,7 +35,7 @@ public class VillageGenerator extends Generator {
     @Override
     public boolean generate(TerrainGenerator generator, int chunkX, int chunkZ, ChunkRand rand) {
         Biome biome = generator.getBiomeSource().getBiome(chunkX*16,0,chunkZ*16);
-        if(!Biomes.TAIGA.equals(biome))return false;
+        if(!Biomes.TAIGA.equals(biome))return false;//must be optional to be reuse
         this.villageType = VillageType.getType(biome, generator.getVersion());
         if(this.villageType == null)return false;
         pieces = new ArrayList<>();
@@ -49,6 +49,7 @@ public class VillageGenerator extends Generator {
         JigSawPool jigSawPool = STARTS.get(villageType);
         String template = rand.getRandom(jigSawPool.getTemplates());
         if(!template.equals("taiga/town_centers/taiga_meeting_point_2"))return false;  //to get the max number of street
+        //must be optional to be reusable
         BPos size = STRUCTURE_SIZE.get(template);
         BPos bPos = new CPos(chunkX, chunkZ).toBlockPos(0);
         BlockBox box = BlockBox.getBoundingBox(bPos, rotation, BPos.ORIGIN, BlockMirror.NONE, size);
@@ -203,7 +204,8 @@ public class VillageGenerator extends Generator {
             this.maxDepth = maxDepth;
             this.generator = generator;
             this.pieces = pieces;
-            //want to opti but it's not working
+            //must be switchable between normal surface generator and fastSurfaceGenerator
+            //here this is the fast one
             this.sGen = new SurfaceGenerator2(generator.getBiomeSource(), 256, 1, 2,
                     NoiseSettings.create(0.9999999814507745, 0.9999999814507745, 80.0, 160.0)
                             .addTopSlide(-10, 3, 0)
@@ -392,6 +394,7 @@ public class VillageGenerator extends Generator {
     }
 
     @Override
+    //not implemented yet
     public List<Pair<ILootType, BPos>> getChestsPos() {
         return null;
     }
@@ -423,6 +426,7 @@ public class VillageGenerator extends Generator {
         RIGID,
         TERRAIN_MATCHING,
     }
+    //put that in another Folder
     private static final HashMap<String, BPos> STRUCTURE_SIZE = new HashMap<>() {{
         this.put("common/iron_golem", new BPos(1, 3, 1));
         this.put("common/well_bottom", new BPos(4, 3, 4));
