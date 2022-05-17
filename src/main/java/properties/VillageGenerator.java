@@ -430,11 +430,13 @@ public class VillageGenerator extends Generator {
     private static final HashMap<String, BPos> STRUCTURE_SIZE = new HashMap<>() {{
         this.put("common/iron_golem", new BPos(1, 3, 1));
         this.put("common/well_bottom", new BPos(4, 3, 4));
+        //possibility of errors don't remember though
         this.put("common/animals/cat_black", new BPos(1, 3, 1));
         this.put("common/animals/cat_british", new BPos(1, 3, 1));
         this.put("common/animals/cat_calico", new BPos(1, 3, 1));
         this.put("common/animals/cat_jellie", new BPos(1, 3, 1));
         this.put("common/animals/cat_persia", new BPos(1, 3, 1));
+        //possibility of errors between "cat_persia" and "cat_persian"
         this.put("common/animals/cat_ragdoll", new BPos(1, 3, 1));
         this.put("common/animals/cat_red", new BPos(1, 3, 1));
         this.put("common/animals/cat_siamese", new BPos(1, 3, 1));
@@ -943,12 +945,12 @@ public class VillageGenerator extends Generator {
             if(Biomes.DESERT.equals(biome) || Biomes.DESERT_HILLS.equals(biome)) {
                 return DESERT;
             }
-            /*if(Biomes.SAVANNA.equals(biome)) {
+            if(Biomes.SAVANNA.equals(biome)) {
                 return SAVANNA;
             }
             if(Biomes.SNOWY_TUNDRA.equals(biome)) {
                 return SNOWY;
-            }*/
+            }
             if(Biomes.TAIGA.equals(biome)) {
                 return TAIGA;
             }
@@ -974,6 +976,7 @@ public class VillageGenerator extends Generator {
             return null;
         }
         public String getBlackSmithName(){
+            //don't check for zombie village yet
             switch(this){
                 case DESERT :
                     return "desert/houses/desert_weaponsmith_1";
@@ -982,6 +985,10 @@ public class VillageGenerator extends Generator {
                     return "plains/houses/plains_weaponsmith_1";
                 case TAIGA:
                     return "taiga/houses/taiga_weaponsmith_1";
+                case SAVANNA :
+                    return "savanna/houses/savanna_weaponsmith_1";
+                case SNOWY :
+                    return "snowy/houses/snowy_weaponsmith_1";
                 default:
                     return "desert/houses/desert_weaponsmith_1";
             }
@@ -995,6 +1002,10 @@ public class VillageGenerator extends Generator {
                     return "plains/houses";
                 case TAIGA:
                     return "taiga/houses";
+                case SAVANNA :
+                    return "savanna/houses";
+                case SNOWY :
+                    return "snowy/houses";
                 default:
                     return "desert/houses";
             }
@@ -1009,8 +1020,10 @@ public class VillageGenerator extends Generator {
                 case PLAINS:
                     return PlainPool.VILLAGE_POOLS;
                 case SAVANNA:
+                    //return SavannaPool.VILLAGE_POOLS;
                     return null;
                 case SNOWY:
+                    //return SnowyPool.VILLAGE_POOLS;
                     return null;
 
             }
