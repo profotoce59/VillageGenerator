@@ -1,5 +1,11 @@
 package reecriture;
-
+/* Rewrote the kaptainWutax Generator to be able to skip some layers.
+ For Village Generation, the generator required the height of the terrain
+ at this place. But the previous algorithm was checking 
+ if there is a block at y=255 then y = 254 ... take lot of time 
+ Instead of that I checked directly at y=120 for example and it's 3 times faster
+ This method add a little bit of inaccuracy with high Village (Should use a parameter to
+ switch off this option)*\
 import kaptainwutax.biomeutils.source.BiomeSource;
 import kaptainwutax.mcutils.block.Block;
 import kaptainwutax.mcutils.rand.ChunkRand;
