@@ -35,7 +35,7 @@ public class VillageGenerator extends Generator {
     @Override
     public boolean generate(TerrainGenerator generator, int chunkX, int chunkZ, ChunkRand rand) {
         Biome biome = generator.getBiomeSource().getBiome(chunkX*16,0,chunkZ*16);
-        if(!Biomes.TAIGA.equals(biome))return false;//must be optional to be reuse
+        if(!Biomes.SNOWY_TUNDRA.equals(biome))return false;//must be optional to be reuse
         this.villageType = VillageType.getType(biome, generator.getVersion());
         if(this.villageType == null)return false;
         pieces = new ArrayList<>();
@@ -48,7 +48,7 @@ public class VillageGenerator extends Generator {
 
         JigSawPool jigSawPool = STARTS.get(villageType);
         String template = rand.getRandom(jigSawPool.getTemplates());
-        if(!template.equals("taiga/town_centers/taiga_meeting_point_2"))return false;  //to get the max number of street
+        //if(!template.equals("taiga/town_centers/taiga_meeting_point_2"))return false;  //to get the max number of street
         //must be optional to be reusable
         BPos size = STRUCTURE_SIZE.get(template);
         BPos bPos = new CPos(chunkX, chunkZ).toBlockPos(0);
@@ -115,15 +115,17 @@ public class VillageGenerator extends Generator {
 
         public List<BlockJigsawInfo> getShuffledJigsawBlocks(VillageType villageType, BPos offset, JRand rand) {
 
-            List<Pair<Quad<String, String, String, Block>, BPos>> defaultValue = Collections.singletonList(
-                    new Pair<>(new Quad<>("empty", "bottom", "down_south", Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+            List<Pair<Quad<String, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>> defaultValue = Collections.singletonList(
+                    new Pair<>(new Quad<>("empty", "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
             );
-            List<Pair<Quad<String, String, String, Block>, BPos>> blocks = villageType.getJigsawBlocks().getOrDefault(this.name,defaultValue);
+            List<Pair<Quad<String, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>> blocks = villageType.getJigsawBlocks().getOrDefault(this.name,defaultValue);
 
-            List<BlockJigsawInfo> list = blocks.stream()
-                    .map(b->new BlockJigsawInfo(b.getFirst()
-                            ,b.getSecond().transform(BlockMirror.NONE, rotation, BPos.ORIGIN).add(offset),rotation))
-                    .collect(Collectors.toList());
+            List<BlockJigsawInfo> list = new ArrayList<>();
+            for (Pair<Quad<String, String, Pair<BlockDirection, BlockDirection>, Block>, BPos> b : blocks) {
+                BlockJigsawInfo blockJigsawInfo = new BlockJigsawInfo(b.getFirst()
+                        , b.getSecond().transform(BlockMirror.NONE, rotation, BPos.ORIGIN).add(offset), rotation);
+                list.add(blockJigsawInfo);
+            }
             rand.shuffle(list);
             return list;
 
@@ -138,10 +140,10 @@ public class VillageGenerator extends Generator {
     }
 
     public static class BlockJigsawInfo {
-        Quad<String, String, String, Block> nbt;
+        Quad<String, String, Pair<BlockDirection,BlockDirection>, Block> nbt;
         BPos pos;
         BlockRotation rotation;
-        public BlockJigsawInfo(Quad<String, String, String, Block> nbt, BPos pos, BlockRotation rotation) {
+        public BlockJigsawInfo(Quad<String, String, Pair<BlockDirection,BlockDirection>, Block> nbt, BPos pos, BlockRotation rotation) {
             // nbt is stored as pool,name,orientation,final_state
             this.nbt = nbt;
             this.pos = pos;
@@ -149,8 +151,8 @@ public class VillageGenerator extends Generator {
 
         }
 
-        public BlockDirection getFront() {
-            return rotation.rotate((BlockDirection.fromString(this.nbt.getThird().split("_")[0])));
+        public BlockDirection getFront() {//il aime pas cette fonction
+            return rotation.rotate(this.nbt.getThird().getFirst());
         }
         public BlockDirection getOpposite(BlockDirection b){
             switch (b) {
@@ -189,7 +191,7 @@ public class VillageGenerator extends Generator {
         }
 
         private BlockDirection getFace() {
-            return rotation.rotate(BlockDirection.fromString(this.nbt.getThird().split("_")[1]));
+            return rotation.rotate(this.nbt.getThird().getSecond());
         }
     }
 
@@ -251,6 +253,7 @@ public class VillageGenerator extends Generator {
                             mutableobject1 = piece.getVoxelShape();
                         }
                         LinkedList<String> list = new LinkedList<>();
+
                         if (depth != this.maxDepth) {
                             list = jigSawPool1.getTemplates();
                             if(list.size() !=0) {
@@ -264,6 +267,7 @@ public class VillageGenerator extends Generator {
                             rand.advance(1);
                         }
                             list.addAll(listtmp);
+
                         for (String jigsawpiece1 : list) {
                             //2700 passages
                             if (jigsawpiece1.equals("empty")){
@@ -394,7 +398,6 @@ public class VillageGenerator extends Generator {
     }
 
     @Override
-    //not implemented yet
     public List<Pair<ILootType, BPos>> getChestsPos() {
         return null;
     }
@@ -430,13 +433,11 @@ public class VillageGenerator extends Generator {
     private static final HashMap<String, BPos> STRUCTURE_SIZE = new HashMap<>() {{
         this.put("common/iron_golem", new BPos(1, 3, 1));
         this.put("common/well_bottom", new BPos(4, 3, 4));
-        //possibility of errors don't remember though
         this.put("common/animals/cat_black", new BPos(1, 3, 1));
         this.put("common/animals/cat_british", new BPos(1, 3, 1));
         this.put("common/animals/cat_calico", new BPos(1, 3, 1));
         this.put("common/animals/cat_jellie", new BPos(1, 3, 1));
-        this.put("common/animals/cat_persia", new BPos(1, 3, 1));
-        //possibility of errors between "cat_persia" and "cat_persian"
+        this.put("common/animals/cat_persian", new BPos(1, 3, 1));
         this.put("common/animals/cat_ragdoll", new BPos(1, 3, 1));
         this.put("common/animals/cat_red", new BPos(1, 3, 1));
         this.put("common/animals/cat_siamese", new BPos(1, 3, 1));
@@ -960,38 +961,35 @@ public class VillageGenerator extends Generator {
             return null;
         }
 
-        public HashMap<String, List<Pair<Quad<String, String, String, Block>, BPos>>> getJigsawBlocks() {
+        public HashMap<String, List<Pair<Quad<String, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>>> getJigsawBlocks() {
             switch(this) {
                 case DESERT:
                     return DesertVillageJigsawBlocks.JIGSAW_BLOCKS;
                 case PLAINS:
                     return PlainsVillageJigsawBlock.JIGSAW_BLOCKS;
-                /*case SAVANNA:
+                case SAVANNA:
                     return SavannaVillageJigsawBlocks.JIGSAW_BLOCKS;
                 case SNOWY:
-                    return SnowyVillageJigsawBlocks.JIGSAW_BLOCKS;*/
+                    return SnowyVillageJigsawBlocks.JIGSAW_BLOCKS;
                 case TAIGA:
                     return TaigaVillageJigsawBlocks.JIGSAW_BLOCKS;
             }
             return null;
         }
-        public String getBlackSmithName(){
-            //don't check for zombie village yet
+        public String getBlackSmithName(){//don't check for zombie village yet
             switch(this){
                 case DESERT :
                     return "desert/houses/desert_weaponsmith_1";
-
                 case PLAINS :
                     return "plains/houses/plains_weaponsmith_1";
                 case TAIGA:
                     return "taiga/houses/taiga_weaponsmith_1";
                 case SAVANNA :
-                    return "savanna/houses/savanna_weaponsmith_1";
+                    return "savanna/houses/savanna_weaponsmith_2";
                 case SNOWY :
                     return "snowy/houses/snowy_weaponsmith_1";
-                default:
-                    return "desert/houses/desert_weaponsmith_1";
             }
+            return null;
         }
         public String getHouseName(){
             switch(this){
@@ -1020,11 +1018,9 @@ public class VillageGenerator extends Generator {
                 case PLAINS:
                     return PlainPool.VILLAGE_POOLS;
                 case SAVANNA:
-                    //return SavannaPool.VILLAGE_POOLS;
-                    return null;
+                    return SavannaPool.VILLAGE_POOLS;
                 case SNOWY:
-                    //return SnowyPool.VILLAGE_POOLS;
-                    return null;
+                    return SnowyPool.VILLAGE_POOLS;
 
             }
             return null;
@@ -1036,7 +1032,7 @@ public class VillageGenerator extends Generator {
         put(VillageType.LEGACY, null);
         put(VillageType.PLAINS, new JigSawPool(PlainPool.VILLAGE_POOLS.get("plains/town_centers").getSecond()));
         put(VillageType.TAIGA, new JigSawPool(TaigaPool.VILLAGE_POOLS.get("taiga/town_centers").getSecond()));
-        put(VillageType.SAVANNA, null);
-        put(VillageType.SNOWY, null);
+        put(VillageType.SAVANNA, new JigSawPool(SavannaPool.VILLAGE_POOLS.get("savanna/town_centers").getSecond()));
+        put(VillageType.SNOWY, new JigSawPool(SnowyPool.VILLAGE_POOLS.get("snowy/town_centers").getSecond()));
     }};
 }

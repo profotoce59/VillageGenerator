@@ -35,7 +35,7 @@ public class testVillageGen implements Runnable{
 
                 //structureSeed = 609500824323805L;
                 List<CPos> villePosList = new ArrayList<>();
-                for (int i=0;i<500;i++)for (int j=0;j<500;j++)
+                for (int i=0;i<4;i++)for (int j=0;j<4;j++)
                 villePosList.add(ville.getInRegion(structureSeed, i, j, chunkRand));
                 //CPos villePosList = new CPos(5129,4756);
                 CheckWorldSeed(structureSeed, villePosList,version);
@@ -76,7 +76,10 @@ public class testVillageGen implements Runnable{
                     //numGenerationSucceed++;
                     //System.out.println(numGenerationSucceed);
                     int numBS = villeGen.getNumberOfBlackSmith();
-                    if(numBS>3){
+                    System.out.println("worldSeed : " + worldSeed +" "+sPos.toString());
+                    villeGen.printPieces();
+
+                    if(numBS>6){
                         System.out.println("worldSeed : " + worldSeed + " structureSeed " + structureSeed+" "+numBS+" /tp "+sPos.getX()*16+" 80 "+sPos.getZ()*16);
                     }
                     else{

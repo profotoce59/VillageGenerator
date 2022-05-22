@@ -1,6 +1,5 @@
 package reecriture.VillagePools;
-//give directly the max height for a structure pool to avoid to calculate with a max function as it's done
-//in mc code which took a while
+
 import java.util.HashMap;
 
 public class VillagePoolYMax {
@@ -48,8 +47,9 @@ public class VillagePoolYMax {
         put("taiga/zombie/decor",2);
         put("taiga/villagers",3);
         put("taiga/zombie/villagers",3);
-        
+
         put("savanna/terminators",2);
+        put("savanna/zombie/terminators",2);
         put("savanna/town_centers",6);
         put("savanna/streets",2);
         put("savanna/zombie/streets",2);
@@ -59,7 +59,8 @@ public class VillagePoolYMax {
         put("savanna/zombie/decor",2);
         put("savanna/villagers",3);
         put("savanna/zombie/villagers",3);
-        
+        put("savanna/trees",1);
+
         put("snowy/terminators",2);
         put("snowy/town_centers",8);
         put("snowy/streets",2);

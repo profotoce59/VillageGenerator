@@ -5,7 +5,7 @@ import kaptainwutax.mcutils.util.data.Triplet;
 import properties.VillageGenerator;
 
 import java.util.*;
-//list de pair :(structure_name,probability)
+
 public interface DesertPool {
     public static final Map<String, Triplet<String, List<Pair<String, Integer>>, VillageGenerator.PlacementBehaviour>> VILLAGE_POOLS = new HashMap<String, Triplet<String, List<Pair<String, Integer>>, VillageGenerator.PlacementBehaviour>>() {
         {

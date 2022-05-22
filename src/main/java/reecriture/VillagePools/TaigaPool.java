@@ -111,19 +111,19 @@ public interface TaigaPool {
  new Pair<>("plains/terminators/terminator_03", 1),
  new Pair<>("plains/terminators/terminator_04", 1)), VillageGenerator.PlacementBehaviour.TERRAIN_MATCHING));
     put("taiga/decor", new Triplet<>("empty", Arrays.asList(
- new Pair<>("taiga/taiga_lamp_post_1", 10),
- new Pair<>("taiga/taiga_decoration_1", 4),
- new Pair<>("taiga/taiga_decoration_2", 1),
- new Pair<>("taiga/taiga_decoration_3", 1),
- new Pair<>("taiga/taiga_decoration_4", 1),
- new Pair<>("taiga/taiga_decoration_5", 2),
- new Pair<>("taiga/taiga_decoration_6", 1),
- new Pair<>("taiga/spruce", 4),
- new Pair<>("taiga/pine", 4),
- new Pair<>("taiga/pile_pumpkin", 2),
- new Pair<>("taiga/patch_taiga_grass", 4),
- new Pair<>("taiga/patch_berry_bush", 1),
- new Pair<>("empty", 4)), VillageGenerator.PlacementBehaviour.RIGID));
+         new Pair<>("taiga/taiga_lamp_post_1", 10),
+         new Pair<>("taiga/taiga_decoration_1", 4),
+         new Pair<>("taiga/taiga_decoration_2", 1),
+         new Pair<>("taiga/taiga_decoration_3", 1),
+         new Pair<>("taiga/taiga_decoration_4", 1),
+         new Pair<>("taiga/taiga_decoration_5", 2),
+         new Pair<>("taiga/taiga_decoration_6", 1),
+         new Pair<>("taiga/spruce", 4),
+         new Pair<>("taiga/pine", 4),
+         new Pair<>("taiga/pile_pumpkin", 2),
+         new Pair<>("taiga/patch_taiga_grass", 4),
+         new Pair<>("taiga/patch_berry_bush", 1),
+         new Pair<>("empty", 4)), VillageGenerator.PlacementBehaviour.RIGID));
     put("taiga/zombie/decor", new Triplet<>("empty", Arrays.asList(
             new Pair<>("taiga/taiga_decoration_1", 4),
             new Pair<>("taiga/taiga_decoration_2", 1),
@@ -136,17 +136,17 @@ public interface TaigaPool {
             new Pair<>("taiga/patch_berry_bush", 1),
             new Pair<>("empty", 4)), VillageGenerator.PlacementBehaviour.RIGID));
     put("taiga/villagers", new Triplet<>("empty", Arrays.asList(
- new Pair<>("taiga/villagers/nitwit", 1),
- new Pair<>("taiga/villagers/baby", 1),
- new Pair<>("taiga/villagers/unemployed", 10)), VillageGenerator.PlacementBehaviour.RIGID));
+             new Pair<>("taiga/villagers/nitwit", 1),
+             new Pair<>("taiga/villagers/baby", 1),
+             new Pair<>("taiga/villagers/unemployed", 10)), VillageGenerator.PlacementBehaviour.RIGID));
     put("taiga/zombie/villagers", new Triplet<>("empty", Arrays.asList(
- new Pair<>("taiga/zombie/villagers/nitwit", 1),
- new Pair<>("taiga/zombie/villagers/unemployed", 10)), VillageGenerator.PlacementBehaviour.RIGID));
+             new Pair<>("taiga/zombie/villagers/nitwit", 1),
+             new Pair<>("taiga/zombie/villagers/unemployed", 10)), VillageGenerator.PlacementBehaviour.RIGID));
         put("common/cats", new Triplet<>("empty", Arrays.asList(
                 new Pair<>("common/animals/cat_black", 1),
                 new Pair<>("common/animals/cat_british", 1),
                 new Pair<>("common/animals/cat_calico", 1),
-                new Pair<>("common/animals/cat_persia", 1),
+                new Pair<>("common/animals/cat_persian", 1),
                 new Pair<>("common/animals/cat_ragdoll", 1),
                 new Pair<>("common/animals/cat_red", 1),
                 new Pair<>("common/animals/cat_siamese", 1),
