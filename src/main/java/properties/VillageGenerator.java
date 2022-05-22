@@ -31,11 +31,14 @@ public class VillageGenerator extends Generator {
     public VillageGenerator(MCVersion version) {
         super(version);
     }
-
+    public boolean generate(TerrainGenerator generator, int chunkX, int chunkZ, ChunkRand rand,Biome biomeWanted) {
+        Biome biome = generator.getBiomeSource().getBiomeForNoiseGen((chunkX << 2) + 2, 0, (chunkZ << 2) + 2);
+        if(!biomeWanted.equals(biome))return false;
+        else return this.generate(generator,chunkX,chunkZ,rand);
+    }
     @Override
     public boolean generate(TerrainGenerator generator, int chunkX, int chunkZ, ChunkRand rand) {
-        Biome biome = generator.getBiomeSource().getBiome(chunkX*16,0,chunkZ*16);
-        if(!Biomes.SNOWY_TUNDRA.equals(biome))return false;//must be optional to be reuse
+        Biome biome = generator.getBiomeSource().getBiomeForNoiseGen((chunkX << 2) + 2, 0, (chunkZ << 2) + 2);
         this.villageType = VillageType.getType(biome, generator.getVersion());
         if(this.villageType == null)return false;
         pieces = new ArrayList<>();
@@ -55,7 +58,7 @@ public class VillageGenerator extends Generator {
         BlockBox box = BlockBox.getBoundingBox(bPos, rotation, BPos.ORIGIN, BlockMirror.NONE, size);
         int centerX = (box.minX + box.maxX) / 2;
         int centerZ = (box.minZ + box.maxZ) / 2;
-        int y = bPos.getY() + generator.getHeightOnGround(centerX, centerZ);
+        int y = bPos.getY() + generator.getFirstHeightInColumn(centerX,centerZ,TerrainGenerator.WORLD_SURFACE_WG);
         int centerY = box.minY + 1;
 
         // create the first piece (always rigid)
@@ -987,7 +990,7 @@ public class VillageGenerator extends Generator {
                 case SAVANNA :
                     return "savanna/houses/savanna_weaponsmith_2";
                 case SNOWY :
-                    return "snowy/houses/snowy_weaponsmith_1";
+                    return "snowy/houses/snowy_weapon_smith_1";
             }
             return null;
         }
