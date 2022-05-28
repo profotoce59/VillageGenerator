@@ -77,9 +77,19 @@ public class VillageGenerator extends Generator {
         return true;
     }
 
+    @Override
+    public List<Pair<ILootType, BPos>> getChestsPos() {
+        return null;
+    }
+
+    @Override
+    public List<Pair<ILootType, BPos>> getLootPos() {
+        return null;
+    }
+
     public void printPieces() {
         for (Piece piece :pieces){
-            System.out.println(piece.name + " "+piece.pos.toString());
+            System.out.println(piece.name + " "+piece.pos.toString()+" "+piece.rotation);
         }
     }
     public List<Piece> getPieces() {
@@ -270,7 +280,11 @@ public class VillageGenerator extends Generator {
                             rand.advance(1);
                         }
                             list.addAll(listtmp);
-
+                        /*int tmp = rand.nextInt();
+                        if (tmp == -832601875){
+                            System.out.println("test");
+                        }
+                        System.out.println("avant JigsawPiece jigsawpiece1 : list "+ tmp);*/
                         for (String jigsawpiece1 : list) {
                             //2700 passages
                             if (jigsawpiece1.equals("empty")){
@@ -280,6 +294,11 @@ public class VillageGenerator extends Generator {
 
                             for (BlockRotation rotation1 : BlockRotation.getShuffled(rand) ) {
                                 //10k passages
+                                /*tmp = rand.nextInt();
+                                if (tmp == -832601875){
+                                    System.out.println("test");
+                                }
+                                System.out.println("avant getShuffledJigsawBlocks2 "+ tmp);*/
                                 BPos size1 = STRUCTURE_SIZE.get(jigsawpiece1);
                                  //le retirer plus tard on s'en fou des villageois
                                 BlockBox box1;
@@ -340,8 +359,8 @@ public class VillageGenerator extends Generator {
                                             i2 = minY + l1;
                                         } else {
                                             if (state == -1) {
-                                                //int state1 = this.generator.getFirstHeightInColumn(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
-                                                state = this.sGen.generateColumnfromY(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
+                                                state = this.generator.getFirstHeightInColumn(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
+                                                //state = this.sGen.generateColumnfromY(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
                                             }
                                             i2 = state - k1;
                                         }
@@ -395,14 +414,18 @@ public class VillageGenerator extends Generator {
         }
     }
 
-    @Override
-    public List<Pair<ILootType, BPos>> getLootPos() {
+    /*public List<Pair<ILootType, BPos>> getLootPos() {
         return getChestsPos();
-    }
+    }*/
 
-    @Override
-    public List<Pair<ILootType, BPos>> getChestsPos() {
-        return null;
+    public List<CPos> getChestsPosition() {
+        List<CPos> chestPos = new ArrayList<>();
+        for (Piece piece : this.pieces) {
+            if (piece.name.equals(villageType.getBlackSmithName())) {
+                chestPos.add(villageType.getChestChunk(piece));
+            }
+        }
+        return chestPos;
     }
 
     @Override
@@ -413,7 +436,11 @@ public class VillageGenerator extends Generator {
     public int getNumberOfBlackSmith(){
         int nb = 0;
         for (Piece piece : this.pieces){
-            if(piece.name.equals(villageType.getBlackSmithName()))nb++;
+            if(piece.name.equals(villageType.getBlackSmithName())) {
+                nb++;
+                System.out.println(piece.name + " "+piece.pos.toString()+" "+piece.rotation);
+                System.out.println(villageType.getChestChunk(piece));
+            }
         }
         return nb;
     }
@@ -1009,6 +1036,33 @@ public class VillageGenerator extends Generator {
                     return "snowy/houses";
                 default:
                     return "desert/houses";
+            }
+        }
+        public CPos getChestChunk(Piece piece){
+            BPos dist;
+            switch(this){
+                case DESERT :
+                    dist = new BPos(1,0,2);
+                    dist = piece.rotation.rotate(dist,new BPos(0,0,0));
+                    return piece.pos.add(dist).toChunkPos();
+                case PLAINS :
+                    dist = new BPos(6,0,4);
+                    dist = piece.rotation.rotate(dist,new BPos(0,0,0));
+                    return piece.pos.add(dist).toChunkPos();
+                case TAIGA:
+                    dist = new BPos(2,0,3);
+                    dist = piece.rotation.rotate(dist,new BPos(0,0,0));
+                    return piece.pos.add(dist).toChunkPos();
+                case SAVANNA :
+                    dist = new BPos(2,0,9);
+                    dist = piece.rotation.rotate(dist,new BPos(0,0,0));
+                    return piece.pos.add(dist).toChunkPos();
+                case SNOWY :
+                    dist = new BPos(2,0,2);
+                    dist = piece.rotation.rotate(dist,new BPos(0,0,0));
+                    return piece.pos.add(dist).toChunkPos();
+                default:
+                    return new CPos(1,1);
             }
         }
 
