@@ -280,11 +280,6 @@ public class VillageGenerator extends Generator {
                             rand.advance(1);
                         }
                             list.addAll(listtmp);
-                        /*int tmp = rand.nextInt();
-                        if (tmp == -832601875){
-                            System.out.println("test");
-                        }
-                        System.out.println("avant JigsawPiece jigsawpiece1 : list "+ tmp);*/
                         for (String jigsawpiece1 : list) {
                             //2700 passages
                             if (jigsawpiece1.equals("empty")){
@@ -294,11 +289,6 @@ public class VillageGenerator extends Generator {
 
                             for (BlockRotation rotation1 : BlockRotation.getShuffled(rand) ) {
                                 //10k passages
-                                /*tmp = rand.nextInt();
-                                if (tmp == -832601875){
-                                    System.out.println("test");
-                                }
-                                System.out.println("avant getShuffledJigsawBlocks2 "+ tmp);*/
                                 BPos size1 = STRUCTURE_SIZE.get(jigsawpiece1);
                                  //le retirer plus tard on s'en fou des villageois
                                 BlockBox box1;
@@ -359,8 +349,8 @@ public class VillageGenerator extends Generator {
                                             i2 = minY + l1;
                                         } else {
                                             if (state == -1) {
-                                                state = this.generator.getFirstHeightInColumn(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
-                                                //state = this.sGen.generateColumnfromY(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
+                                                //state = this.generator.getFirstHeightInColumn(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
+                                                state = this.sGen.generateColumnfromY(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
                                             }
                                             i2 = state - k1;
                                         }
@@ -438,8 +428,6 @@ public class VillageGenerator extends Generator {
         for (Piece piece : this.pieces){
             if(piece.name.equals(villageType.getBlackSmithName())) {
                 nb++;
-                System.out.println(piece.name + " "+piece.pos.toString()+" "+piece.rotation);
-                System.out.println(villageType.getChestChunk(piece));
             }
         }
         return nb;
