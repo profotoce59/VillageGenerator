@@ -946,7 +946,7 @@ public class VillageGenerator extends Generator {
 
         public static VillageType getType(Biome biome, MCVersion version) {
             if(version.isOlderThan(MCVersion.v1_14)) return LEGACY;
-            if(Biomes.DESERT.equals(biome) || Biomes.DESERT_HILLS.equals(biome)) {
+            if(Biomes.DESERT.equals(biome)) {
                 return DESERT;
             }
             if(Biomes.SAVANNA.equals(biome)) {
