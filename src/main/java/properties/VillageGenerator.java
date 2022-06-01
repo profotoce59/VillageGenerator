@@ -23,7 +23,6 @@ import reecriture.*;
 import reecriture.VillagePools.*;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 public class VillageGenerator extends Generator {
     public List<Piece> pieces;
@@ -45,6 +44,8 @@ public class VillageGenerator extends Generator {
         rand = rand.asChunkRandDebugger();
 
         rand.setCarverSeed(generator.getWorldSeed(), chunkX, chunkZ, generator.getVersion());
+
+        //wrong ??
         BlockRotation rotation = BlockRotation.getRandom(rand);
 
         // compute the template
@@ -126,17 +127,18 @@ public class VillageGenerator extends Generator {
             this.boundsTop = boundsTop;
         }
 
-        public List<BlockJigsawInfo> getShuffledJigsawBlocks(VillageType villageType, BPos offset, JRand rand) {
+        public List<BlockJigsawInfo> getShuffledJigsawBlocks(VillageType villageType, BPos offset, JRand rand,MCVersion version) {
 
             List<Pair<Quad<String, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>> defaultValue = Collections.singletonList(
                     new Pair<>(new Quad<>("empty", "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
             );
-            List<Pair<Quad<String, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>> blocks = villageType.getJigsawBlocks().getOrDefault(this.name,defaultValue);
+            List<Pair<Quad<String, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>> blocks = villageType.getJigsawBlocks(version)
+                    .getOrDefault(this.name,defaultValue);//a enlever maintenant que j'ai compris
 
             List<BlockJigsawInfo> list = new ArrayList<>();
             for (Pair<Quad<String, String, Pair<BlockDirection, BlockDirection>, Block>, BPos> b : blocks) {
                 BlockJigsawInfo blockJigsawInfo = new BlockJigsawInfo(b.getFirst()
-                        , b.getSecond().transform(BlockMirror.NONE, rotation, BPos.ORIGIN).add(offset), rotation);
+                        , b.getSecond().transform(BlockMirror.NONE, rotation, BPos.ORIGIN).add(offset),rotation );//erreur quand c'est up
                 list.add(blockJigsawInfo);
             }
             rand.shuffle(list);
@@ -185,26 +187,11 @@ public class VillageGenerator extends Generator {
                     throw new IllegalStateException("Unable to get facing of " );
             }
         }
+        public boolean canAttach15(BlockJigsawInfo blockJigsawInfo2,BlockDirection direction) { //1.15 version is faster and seems the same
 
-        public boolean canAttach(BlockJigsawInfo blockJigsawInfo2,BlockDirection direction) {
+            return direction == this.getOpposite(blockJigsawInfo2.getFront())
+                    && this.nbt.getSecond().equals(blockJigsawInfo2.nbt.getSecond());
 
-            if(!this.nbt.getSecond().equals(blockJigsawInfo2.nbt.getSecond())){//opti
-                return false;
-            }
-            BlockDirection direction2 = blockJigsawInfo2.getFront();
-            BlockDirection direction2b = this.getOpposite(direction2);
-            if(!direction.equals(direction2b)){//opti
-                return false;
-            }
-            BlockDirection direction3 = this.getFace();
-            BlockDirection direction4 = blockJigsawInfo2.getFace();
-            boolean isROLLABLE = (direction.getAxis().ordinal())%2==1;
-            return (isROLLABLE || direction4 == direction3);
-
-        }
-
-        private BlockDirection getFace() {
-            return rotation.rotate(this.nbt.getThird().getSecond());
         }
     }
 
@@ -239,7 +226,7 @@ public class VillageGenerator extends Generator {
             int minY = box.minY;
             label139:
 
-            for (BlockJigsawInfo blockJigsawInfo : piece.getShuffledJigsawBlocks(villageType, pos, rand)) {
+            for (BlockJigsawInfo blockJigsawInfo : piece.getShuffledJigsawBlocks(villageType, pos, rand,generator.getVersion())) {//empty pour la first(ca devrait pas)
                 BlockDirection blockDirection = blockJigsawInfo.getFront();
                 BPos blockPos = blockJigsawInfo.pos;
                 BPos relativeBlockPos = new BPos(blockPos.getX() + blockDirection.getVector().getX(),
@@ -289,6 +276,7 @@ public class VillageGenerator extends Generator {
 
                             for (BlockRotation rotation1 : BlockRotation.getShuffled(rand) ) {
                                 //10k passages
+
                                 BPos size1 = STRUCTURE_SIZE.get(jigsawpiece1);
                                  //le retirer plus tard on s'en fou des villageois
                                 BlockBox box1;
@@ -299,7 +287,7 @@ public class VillageGenerator extends Generator {
                                     box1 = BlockBox.getBoundingBox(BPos.ORIGIN, rotation1, BPos.ORIGIN, BlockMirror.NONE, size1);
                                 }
                                 Piece piece1 = new Piece(jigsawpiece1, BPos.ORIGIN, box1, rotation1, pool.getThird(),0);
-                                List<BlockJigsawInfo> list1 = piece1.getShuffledJigsawBlocks(villageType, BPos.ORIGIN, rand);
+                                List<BlockJigsawInfo> list1 = piece1.getShuffledJigsawBlocks(villageType, BPos.ORIGIN, rand,generator.getVersion());
                                 int i1;
                                 if (expansionHack && box1.getYSpan() <= 16) {
                                     i1 = list1.stream().mapToInt((p_242841_2_) -> {
@@ -327,7 +315,8 @@ public class VillageGenerator extends Generator {
 
                                 BlockDirection direction = blockJigsawInfo.getFront();
                                 for (BlockJigsawInfo blockJigsawInfo2 : list1) {//55k passages
-                                    if (blockJigsawInfo.canAttach(blockJigsawInfo2,direction)) {
+
+                                    if (blockJigsawInfo.canAttach15(blockJigsawInfo2,direction)) {
                                         //5000 passages
                                         BPos blockPos3 = blockJigsawInfo2.pos;
                                         BPos blockPos4 = new BPos(relativeBlockPos.getX() - blockPos3.getX(),
@@ -349,8 +338,8 @@ public class VillageGenerator extends Generator {
                                             i2 = minY + l1;
                                         } else {
                                             if (state == -1) {
-                                                //state = this.generator.getFirstHeightInColumn(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
-                                                state = this.sGen.generateColumnfromY(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
+                                                state = this.generator.getFirstHeightInColumn(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
+                                                //state = this.sGen.generateColumnfromY(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
                                             }
                                             i2 = state - k1;
                                         }
@@ -391,8 +380,8 @@ public class VillageGenerator extends Generator {
             if(box1.minX<voxelShape.getX().get(0) || box1.minY<voxelShape.getY().get(0) || box1.minZ<voxelShape.getZ().get(0)
                     || box1.maxX>=voxelShape.getLastX() || box1.maxY>=voxelShape.getLastY() || box1.maxZ>=voxelShape.getLastZ()
         )return false;
-            for (BlockBox fullBoxe: voxelShape.fullBoxes){
-                if(intersects2(box1,fullBoxe)){
+            for (BlockBox fullBox: voxelShape.fullBoxes){
+                if(intersects2(box1,fullBox)){
                     return false;
                 }
             }
@@ -403,10 +392,6 @@ public class VillageGenerator extends Generator {
             return box1.maxX >= box.minX && box1.minX < box.maxX && box1.maxZ >= box.minZ && box1.minZ < box.maxZ && box1.maxY >= box.minY && box1.minY < box.maxY;
         }
     }
-
-    /*public List<Pair<ILootType, BPos>> getLootPos() {
-        return getChestsPos();
-    }*/
 
     public List<CPos> getChestsPosition() {
         List<CPos> chestPos = new ArrayList<>();
@@ -979,18 +964,35 @@ public class VillageGenerator extends Generator {
             return null;
         }
 
-        public HashMap<String, List<Pair<Quad<String, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>>> getJigsawBlocks() {
-            switch(this) {
-                case DESERT:
-                    return DesertVillageJigsawBlocks.JIGSAW_BLOCKS;
-                case PLAINS:
-                    return PlainsVillageJigsawBlock.JIGSAW_BLOCKS;
-                case SAVANNA:
-                    return SavannaVillageJigsawBlocks.JIGSAW_BLOCKS;
-                case SNOWY:
-                    return SnowyVillageJigsawBlocks.JIGSAW_BLOCKS;
-                case TAIGA:
-                    return TaigaVillageJigsawBlocks.JIGSAW_BLOCKS;
+        public HashMap<String, List<Pair<Quad<String, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>>> getJigsawBlocks(MCVersion version) {
+            if(version.isOlderThan(MCVersion.v1_16)){
+                switch(this) {
+                    case DESERT:
+                        return DesertVillageJigsawBlocks.JIGSAW_BLOCKS15;
+                    case PLAINS:
+                        return PlainsVillageJigsawBlock.JIGSAW_BLOCKS15;
+                    case SAVANNA:
+                        return SavannaVillageJigsawBlocks.JIGSAW_BLOCKS15;
+                    case SNOWY:
+                        return SnowyVillageJigsawBlocks.JIGSAW_BLOCKS15;
+                    case TAIGA:
+                        return TaigaVillageJigsawBlocks.JIGSAW_BLOCKS15;
+                }
+            }
+            else {
+                switch (this) {
+                    case DESERT:
+                        return DesertVillageJigsawBlocks.JIGSAW_BLOCKS;
+                    case PLAINS:
+                        return PlainsVillageJigsawBlock.JIGSAW_BLOCKS;
+                    case SAVANNA:
+                        return SavannaVillageJigsawBlocks.JIGSAW_BLOCKS;
+                    case SNOWY:
+                        return SnowyVillageJigsawBlocks.JIGSAW_BLOCKS;
+                    case TAIGA:
+                        return TaigaVillageJigsawBlocks.JIGSAW_BLOCKS;
+                }
+
             }
             return null;
         }
