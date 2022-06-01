@@ -167,16 +167,16 @@ public class CommonVillageJigsawBlocks {
         this.put("decays/grass_9x9", Collections.emptyList(
         ));
         this.put("plains/terminators/terminator_01", Collections.singletonList(
-                new Pair<>(new Quad<>("empty", "street", new Pair<>(BlockDirection.EAST,BlockDirection.UP), Blocks.STRUCTURE_VOID), new BPos(1,1,1))
+                new Pair<>(new Quad<>("plains/streets", "street", new Pair<>(BlockDirection.EAST,BlockDirection.UP), Blocks.STRUCTURE_VOID), new BPos(1,1,1))
         ));
         this.put("plains/terminators/terminator_02", Collections.singletonList(
-                new Pair<>(new Quad<>("empty", "street", new Pair<>(BlockDirection.EAST,BlockDirection.UP), Blocks.STRUCTURE_VOID), new BPos(0,1,0))
+                new Pair<>(new Quad<>("plains/streets", "street", new Pair<>(BlockDirection.EAST,BlockDirection.UP), Blocks.STRUCTURE_VOID), new BPos(0,1,0))
         ));
         this.put("plains/terminators/terminator_03", Collections.singletonList(
-                new Pair<>(new Quad<>("empty", "street", new Pair<>(BlockDirection.EAST,BlockDirection.UP), Blocks.STRUCTURE_VOID), new BPos(2,1,1))
+                new Pair<>(new Quad<>("plains/streets", "street", new Pair<>(BlockDirection.EAST,BlockDirection.UP), Blocks.STRUCTURE_VOID), new BPos(2,1,1))
         ));
         this.put("plains/terminators/terminator_04", Collections.singletonList(
-                new Pair<>(new Quad<>("empty", "street", new Pair<>(BlockDirection.EAST,BlockDirection.UP), Blocks.STRUCTURE_VOID), new BPos(3,1,1))
+                new Pair<>(new Quad<>("plains/streets", "street", new Pair<>(BlockDirection.EAST,BlockDirection.UP), Blocks.STRUCTURE_VOID), new BPos(3,1,1))
         ));
 //"plains/streets" instead of empty for the terminator
     }};

@@ -132,7 +132,8 @@ public class VillageGenerator extends Generator {
             List<Pair<Quad<String, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>> defaultValue = Collections.singletonList(
                     new Pair<>(new Quad<>("empty", "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
             );
-            List<Pair<Quad<String, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>> blocks = villageType.getJigsawBlocks(version).getOrDefault(this.name,defaultValue);//a enlever maintenant que j'ai compris
+            List<Pair<Quad<String, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>> blocks = villageType.getJigsawBlocks(version)
+                    .getOrDefault(this.name,defaultValue);//a enlever maintenant que j'ai compris
 
             List<BlockJigsawInfo> list = new ArrayList<>();
             for (Pair<Quad<String, String, Pair<BlockDirection, BlockDirection>, Block>, BPos> b : blocks) {
@@ -225,7 +226,7 @@ public class VillageGenerator extends Generator {
             int minY = box.minY;
             label139:
 
-            for (BlockJigsawInfo blockJigsawInfo : piece.getShuffledJigsawBlocks(villageType, pos, rand,generator.getVersion())) {
+            for (BlockJigsawInfo blockJigsawInfo : piece.getShuffledJigsawBlocks(villageType, pos, rand,generator.getVersion())) {//empty pour la first(ca devrait pas)
                 BlockDirection blockDirection = blockJigsawInfo.getFront();
                 BPos blockPos = blockJigsawInfo.pos;
                 BPos relativeBlockPos = new BPos(blockPos.getX() + blockDirection.getVector().getX(),
@@ -266,6 +267,11 @@ public class VillageGenerator extends Generator {
                             rand.advance(1);
                         }
                             list.addAll(listtmp);
+                        int tmp = rand.nextInt();
+                        if (tmp == -252992875){
+                            System.out.println("test");
+                        }
+                        System.out.println("avant JigsawPiece jigsawpiece1 : list "+ tmp);
                         for (String jigsawpiece1 : list) {
                             //2700 passages
                             if (jigsawpiece1.equals("empty")){
@@ -275,6 +281,11 @@ public class VillageGenerator extends Generator {
 
                             for (BlockRotation rotation1 : BlockRotation.getShuffled(rand) ) {
                                 //10k passages
+                                tmp = rand.nextInt();
+                                if (tmp == -1211756187){
+                                    System.out.println("test");
+                                }
+                                System.out.println("avant getShuffledJigsawBlocks2 "+ tmp);
                                 BPos size1 = STRUCTURE_SIZE.get(jigsawpiece1);
                                  //le retirer plus tard on s'en fou des villageois
                                 BlockBox box1;
@@ -313,6 +324,11 @@ public class VillageGenerator extends Generator {
 
                                 BlockDirection direction = blockJigsawInfo.getFront();
                                 for (BlockJigsawInfo blockJigsawInfo2 : list1) {//55k passages
+                                    tmp = rand.nextInt();
+                                    if(tmp == 1173753465 ){
+                                        System.out.println("tets");
+                                    }
+                                    System.out.println("apres list1"+tmp);
                                     if (blockJigsawInfo.canAttach15(blockJigsawInfo2,direction)) {
                                         //5000 passages
                                         BPos blockPos3 = blockJigsawInfo2.pos;
@@ -356,6 +372,7 @@ public class VillageGenerator extends Generator {
                                                 this.pieces.add(piece2);
                                                 piece2.setVoxelShape(mutableobject1);
                                                 this.placing.addLast(piece2);
+                                                System.out.println(piece2.name);
                                             }
                                             continue label139;
                                         }
