@@ -334,7 +334,7 @@ public class SnowyVillageJigsawBlocks {
         this.put("snowy/villagers/baby", Collections.singletonList(
                 new Pair<>(new Quad<>("empty", "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID), new BPos(0,0,0))
         ));
-        this.put("snowy/villagers/nitwi", Collections.singletonList(
+        this.put("snowy/villagers/nitwit", Collections.singletonList(
                 new Pair<>(new Quad<>("empty", "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID), new BPos(0,0,0))
         ));
         this.put("snowy/villagers/unemployed", Collections.singletonList(
@@ -574,7 +574,7 @@ public class SnowyVillageJigsawBlocks {
                 new Pair<>(new Quad<>("snowy/zombie/streets", "street", new Pair<>(BlockDirection.SOUTH,BlockDirection.UP), Blocks.STRUCTURE_VOID), new BPos(3,1,6)),
                 new Pair<>(new Quad<>("snowy/zombie/streets", "street", new Pair<>(BlockDirection.EAST,BlockDirection.UP), Blocks.STRUCTURE_VOID), new BPos(6,1,3))
         ));
-        this.put("snowy/zombie/villagers/nitwi", Collections.singletonList(
+        this.put("snowy/zombie/villagers/nitwit", Collections.singletonList(
                 new Pair<>(new Quad<>("empty", "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID), new BPos(0,0,0))
         ));
         this.put("snowy/zombie/villagers/unemployed", Collections.singletonList(
