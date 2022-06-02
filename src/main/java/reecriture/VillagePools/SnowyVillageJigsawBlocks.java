@@ -87,7 +87,7 @@ public class SnowyVillageJigsawBlocks {
                 new Pair<>(new Quad<>("empty", "building_entrance", new Pair<>(BlockDirection.WEST,BlockDirection.UP), Blocks.PACKED_ICE), new BPos(0,1,2))
         ));
         this.put("snowy/houses/snowy_shepherds_house_1", Arrays.asList(
-                new Pair<>(new Quad<>("empty", "buidling_entrance", new Pair<>(BlockDirection.WEST,BlockDirection.UP), Blocks.STRUCTURE_VOID), new BPos(0,0,6)),
+                new Pair<>(new Quad<>("empty", "building_entrance", new Pair<>(BlockDirection.WEST,BlockDirection.UP), Blocks.STRUCTURE_VOID), new BPos(0,0,6)),
                 new Pair<>(new Quad<>("common/sheep", "bottom", new Pair<>(BlockDirection.UP,BlockDirection.NORTH), Blocks.GRASS_BLOCK), new BPos(1,0,2))
         ));
         this.put("snowy/houses/snowy_small_house_1", Arrays.asList(
@@ -653,7 +653,7 @@ public class SnowyVillageJigsawBlocks {
         ));
         this.put("snowy/houses/snowy_shepherds_house_1", Arrays.asList(
                 new Pair<>(new Quad<>("common/sheep", "bottom", new Pair<>(BlockDirection.UP,BlockDirection.NORTH), Blocks.GRASS_BLOCK), new BPos(1,0,2)),
-                new Pair<>(new Quad<>("empty", "buidling_entrance", new Pair<>(BlockDirection.WEST,BlockDirection.UP), Blocks.STRUCTURE_VOID), new BPos(0,0,6))
+                new Pair<>(new Quad<>("empty", "building_entrance", new Pair<>(BlockDirection.WEST,BlockDirection.UP), Blocks.STRUCTURE_VOID), new BPos(0,0,6))
         ));
         this.put("snowy/houses/snowy_small_house_1", Arrays.asList(
                 new Pair<>(new Quad<>("snowy/villagers", "bottom", new Pair<>(BlockDirection.UP,BlockDirection.NORTH), Blocks.GRASS_BLOCK), new BPos(3,0,2)),
