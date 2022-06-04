@@ -979,7 +979,7 @@ public class VillageGenerator extends Generator {
                         return TaigaVillageJigsawBlocks.JIGSAW_BLOCKS15;
                 }
             }
-            else {
+            else if(version.isOlderThan(MCVersion.v1_17)){
                 switch (this) {
                     case DESERT:
                         return DesertVillageJigsawBlocks.JIGSAW_BLOCKS;
@@ -994,6 +994,21 @@ public class VillageGenerator extends Generator {
                 }
 
             }
+            else{
+                switch (this) {
+                case DESERT:
+                    return DesertVillageJigsawBlocks.JIGSAW_BLOCKS17;
+                case PLAINS:
+                    return PlainsVillageJigsawBlock.JIGSAW_BLOCKS17;
+                case SAVANNA:
+                    return SavannaVillageJigsawBlocks.JIGSAW_BLOCKS17;
+                case SNOWY:
+                    return SnowyVillageJigsawBlocks.JIGSAW_BLOCKS17;
+                case TAIGA:
+                    return TaigaVillageJigsawBlocks.JIGSAW_BLOCKS17;
+            }
+
+        }
             return null;
         }
         public String getBlackSmithName(){//don't check for zombie village yet

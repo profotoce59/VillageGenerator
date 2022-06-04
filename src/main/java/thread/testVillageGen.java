@@ -19,7 +19,7 @@ public class testVillageGen implements Runnable{
         private final int offset;
         private final int totalThreads;
         private  long startingPoint = new Random().nextLong();
-        private final MCVersion version = MCVersion.v1_15;
+        private final MCVersion version = MCVersion.v1_17;
 
         public testVillageGen(int offset, int totalThreads) {
             this.offset = offset;
@@ -74,17 +74,10 @@ public class testVillageGen implements Runnable{
                 TerrainGenerator generator = TerrainGenerator.of(Dimension.OVERWORLD, bs);
                 for (CPos sPos : villePosList){
                     ChunkRand rand = new ChunkRand();
-                    sPos = new CPos(9,5074);
                     if(!villeGen.generate(generator, sPos.getX(),sPos.getZ(),rand, Biomes.TAIGA))continue;
-                    //numGenerationSucceed++;
-                    //System.out.println(numGenerationSucceed);
                     int numBS = villeGen.getNumberOfBlackSmith();
-                    //System.out.println("worldSeed : " + worldSeed + " structureSeed " + structureSeed+" "+numBS+" /tp "+sPos.getX()*16+" 80 "+sPos.getZ()*16);
-                    //villeGen.printPieces();
-                    //System.out.println("worldSeed : " + worldSeed + " structureSeed " + structureSeed+" "+numBS+" /tp "+sPos.getX()*16+" 80 "+sPos.getZ()*16);
-                    if(numBS>0){
+                    if(numBS>4){
                         System.out.println("worldSeed : " + worldSeed + " structureSeed " + structureSeed+" "+numBS+" /tp "+sPos.getX()*16+" 80 "+sPos.getZ()*16);
-                        villeGen.printPieces();
                     }
                     else{
                     int a = villeGen.getNumberOfHouses();
