@@ -1,9 +1,8 @@
 # VillageGenerator
 Simulate the generation of villages in minecraft
-For now only 3 types of villages are working : DESERT, TAIGA AND PLAIN.
-Versions Supported : 1.14 1.15 1.16
-NOW Supporting SAVANNA and SNOWY village.
+Support every types of village
+Versions Supported : 1.14 1.15 1.16 1.17
 
 I used Kaptain Wutax librairies and mojang code. 
-
+Thank to Solver3002 for his help.
 Credit to Mojang and Kaptain Wutax and Neil for their librairies. I reused the start of their VillageGenerator.
