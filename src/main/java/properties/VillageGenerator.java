@@ -1,5 +1,5 @@
 package properties;
-
+//1971160871
 import kaptainwutax.biomeutils.biome.Biome;
 import kaptainwutax.biomeutils.biome.Biomes;
 import kaptainwutax.featureutils.structure.generator.Generator;
@@ -27,8 +27,19 @@ import java.util.*;
 public class VillageGenerator extends Generator {
     public List<Piece> pieces;
     private VillageType villageType;
+    private boolean useHeightMapOptimizer = true;
     public VillageGenerator(MCVersion version) {
         super(version);
+    }
+    public boolean generate(TerrainGenerator generator, int chunkX, int chunkZ, ChunkRand rand,Biome biomeWanted,boolean useHeightMapOptimizer) {
+        this.useHeightMapOptimizer = useHeightMapOptimizer;
+        Biome biome = generator.getBiomeSource().getBiomeForNoiseGen((chunkX << 2) + 2, 0, (chunkZ << 2) + 2);
+        if(!biomeWanted.equals(biome))return false;
+        else return this.generate(generator,chunkX,chunkZ,rand);
+    }
+    public boolean generate(TerrainGenerator generator, int chunkX, int chunkZ, ChunkRand rand,boolean useHeightMapOptimizer) {
+        this.useHeightMapOptimizer = useHeightMapOptimizer;
+        return this.generate(generator,chunkX,chunkZ,rand);
     }
     public boolean generate(TerrainGenerator generator, int chunkX, int chunkZ, ChunkRand rand,Biome biomeWanted) {
         Biome biome = generator.getBiomeSource().getBiomeForNoiseGen((chunkX << 2) + 2, 0, (chunkZ << 2) + 2);
@@ -67,7 +78,7 @@ public class VillageGenerator extends Generator {
         piece.move(0, y - centerY, 0);
         piece.setBoundsTop(y + 80);
         BlockBox fullBox = new BlockBox(centerX - 80, y - 80, centerZ - 80, centerX + 80 + 1, y + 80 + 1, centerZ + 80 + 1);
-        Assembler assembler = new Assembler(6, generator,this.pieces);
+        Assembler assembler = new Assembler(6, generator,this.pieces,useHeightMapOptimizer);
         VoxelShape a = new VoxelShape(fullBox);
         a.fullBoxes.add(new BlockBox(box.minX,box.minY,box.minZ,box.maxX+1,box.maxY+1,box.maxZ+1));
         piece.voxelShape = a;
@@ -134,7 +145,6 @@ public class VillageGenerator extends Generator {
             );
             List<Pair<Quad<String, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>> blocks = villageType.getJigsawBlocks(version)
                     .getOrDefault(this.name,defaultValue);//a enlever maintenant que j'ai compris
-
             List<BlockJigsawInfo> list = new ArrayList<>();
             for (Pair<Quad<String, String, Pair<BlockDirection, BlockDirection>, Block>, BPos> b : blocks) {
                 BlockJigsawInfo blockJigsawInfo = new BlockJigsawInfo(b.getFirst()
@@ -200,14 +210,14 @@ public class VillageGenerator extends Generator {
         TerrainGenerator generator;
         List<Piece> pieces;
         SurfaceGenerator2 sGen;
+        boolean useHeightMapOptimizer;
 
         private final Deque<Piece> placing = new ArrayDeque<>();
-        Assembler(int maxDepth, TerrainGenerator generator,List<Piece> pieces) {
+        Assembler(int maxDepth, TerrainGenerator generator, List<Piece> pieces, boolean useHeightMapOptimizer) {
             this.maxDepth = maxDepth;
             this.generator = generator;
             this.pieces = pieces;
-            //must be switchable between normal surface generator and fastSurfaceGenerator
-            //here this is the fast one
+            this.useHeightMapOptimizer = useHeightMapOptimizer;
             this.sGen = new SurfaceGenerator2(generator.getBiomeSource(), 256, 1, 2,
                     NoiseSettings.create(0.9999999814507745, 0.9999999814507745, 80.0, 160.0)
                             .addTopSlide(-10, 3, 0)
@@ -231,13 +241,13 @@ public class VillageGenerator extends Generator {
                 BPos blockPos = blockJigsawInfo.pos;
                 BPos relativeBlockPos = new BPos(blockPos.getX() + blockDirection.getVector().getX(),
                         blockPos.getY() + blockDirection.getVector().getY(),
-                        blockPos.getZ() + blockDirection.getVector().getZ()); //erreur in relative with vector.getZ
+                        blockPos.getZ() + blockDirection.getVector().getZ());
                 int y = blockPos.getY() - minY;
                 int state = -1;
-                Triplet<String, List<Pair<String, Integer>>, PlacementBehaviour> pool = villageType.getPool().get(blockJigsawInfo.nbt.getFirst());
+                Triplet<String, List<Pair<String, Integer>>, PlacementBehaviour> pool = villageType.getPool(generator.getVersion()).get(blockJigsawInfo.nbt.getFirst());
                 if (pool != null && pool.getSecond().size() != 0) {
                     String fallbackLocation = pool.getFirst();
-                    Triplet<String, List<Pair<String, Integer>>, PlacementBehaviour> fallbackPool = villageType.getPool().get(fallbackLocation);
+                    Triplet<String, List<Pair<String, Integer>>, PlacementBehaviour> fallbackPool = villageType.getPool(generator.getVersion()).get(fallbackLocation);
                     if (fallbackPool != null && fallbackPool.getSecond().size() != 0) {
                         JigSawPool jigSawPool1 = new JigSawPool(pool.getSecond());
                         JigSawPool jigSawPool2 = new JigSawPool(fallbackPool.getSecond());
@@ -276,7 +286,6 @@ public class VillageGenerator extends Generator {
 
                             for (BlockRotation rotation1 : BlockRotation.getShuffled(rand) ) {
                                 //10k passages
-
                                 BPos size1 = STRUCTURE_SIZE.get(jigsawpiece1);
                                  //le retirer plus tard on s'en fou des villageois
                                 BlockBox box1;
@@ -301,7 +310,7 @@ public class VillageGenerator extends Generator {
                                             int k3;
                                             int l3;
                                                 k3 = VillagePoolYMax.Y_MAX.get(p_242841_2_.nbt.getFirst());
-                                                String fallbackLocation2 = villageType.getPool().get(p_242841_2_.nbt.getFirst()).getFirst();
+                                                String fallbackLocation2 = villageType.getPool(generator.getVersion()).get(p_242841_2_.nbt.getFirst()).getFirst();
                                                 l3 = VillagePoolYMax.Y_MAX.get(fallbackLocation2);
                                             return Math.max(k3, l3);
 
@@ -315,7 +324,6 @@ public class VillageGenerator extends Generator {
 
                                 BlockDirection direction = blockJigsawInfo.getFront();
                                 for (BlockJigsawInfo blockJigsawInfo2 : list1) {//55k passages
-
                                     if (blockJigsawInfo.canAttach15(blockJigsawInfo2,direction)) {
                                         //5000 passages
                                         BPos blockPos3 = blockJigsawInfo2.pos;
@@ -338,8 +346,14 @@ public class VillageGenerator extends Generator {
                                             i2 = minY + l1;
                                         } else {
                                             if (state == -1) {
-                                                state = this.generator.getFirstHeightInColumn(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
-                                                //state = this.sGen.generateColumnfromY(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
+                                                if(this.useHeightMapOptimizer){
+                                                    state = this.sGen.generateColumnfromY(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
+                                                }
+                                                else{
+                                                    state = this.generator.getFirstHeightInColumn(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
+                                                }
+
+
                                             }
                                             i2 = state - k1;
                                         }
@@ -972,11 +986,20 @@ public class VillageGenerator extends Generator {
                     case PLAINS:
                         return PlainsVillageJigsawBlock.JIGSAW_BLOCKS15;
                     case SAVANNA:
-                        return SavannaVillageJigsawBlocks.JIGSAW_BLOCKS15;
+                        HashMap<String, List<Pair<Quad<String, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>>> hashMap = new HashMap<>();
+                        hashMap.putAll(SavannaVillageJigsawBlocks.JIGSAW_BLOCKS15);
+                        hashMap.putAll(PlainsVillageJigsawBlock.JIGSAW_BLOCKS15);
+                        return hashMap;
                     case SNOWY:
-                        return SnowyVillageJigsawBlocks.JIGSAW_BLOCKS15;
+                        hashMap = new HashMap<>();
+                        hashMap.putAll(SnowyVillageJigsawBlocks.JIGSAW_BLOCKS15);
+                        hashMap.putAll(PlainsVillageJigsawBlock.JIGSAW_BLOCKS15);
+                        return hashMap;
                     case TAIGA:
-                        return TaigaVillageJigsawBlocks.JIGSAW_BLOCKS15;
+                        hashMap = new HashMap<>();
+                        hashMap.putAll(TaigaVillageJigsawBlocks.JIGSAW_BLOCKS15);
+                        hashMap.putAll(PlainsVillageJigsawBlock.JIGSAW_BLOCKS15);
+                        return hashMap;
                 }
             }
             else if(version.isOlderThan(MCVersion.v1_17)){
@@ -1071,18 +1094,39 @@ public class VillageGenerator extends Generator {
             }
         }
 
-        public Map<String, Triplet<String, List<Pair<String, Integer>>, PlacementBehaviour>> getPool() {
+        public Map<String, Triplet<String, List<Pair<String, Integer>>, PlacementBehaviour>> getPool(MCVersion version) {
             switch(this) {
                 case TAIGA:
+                    if(version.isNewerOrEqualTo(MCVersion.v1_16))
                     return TaigaPool.VILLAGE_POOLS;
+                    else {
+                        Map<String, Triplet<String, List<Pair<String, Integer>>, PlacementBehaviour>> pool = new HashMap<>();
+                        pool.putAll(TaigaPool.VILLAGE_POOLS);
+                        pool.putAll(PlainPool.VILLAGE_POOLS);
+                        return pool;
+                    }
                 case DESERT:
                     return DesertPool.VILLAGE_POOLS;
                 case PLAINS:
                     return PlainPool.VILLAGE_POOLS;
                 case SAVANNA:
-                    return SavannaPool.VILLAGE_POOLS;
+                    if(version.isNewerOrEqualTo(MCVersion.v1_16))
+                        return SavannaPool.VILLAGE_POOLS;
+                    else {
+                        Map<String, Triplet<String, List<Pair<String, Integer>>, PlacementBehaviour>> pool = new HashMap<>();
+                        pool.putAll(SavannaPool.VILLAGE_POOLS);
+                        pool.putAll(PlainPool.VILLAGE_POOLS);
+                        return pool;
+                    }
                 case SNOWY:
-                    return SnowyPool.VILLAGE_POOLS;
+                    if(version.isNewerOrEqualTo(MCVersion.v1_16))
+                        return SnowyPool.VILLAGE_POOLS;
+                    else {
+                        Map<String, Triplet<String, List<Pair<String, Integer>>, PlacementBehaviour>> pool = new HashMap<>();
+                        pool.putAll(SnowyPool.VILLAGE_POOLS);
+                        pool.putAll(PlainPool.VILLAGE_POOLS);
+                        return pool;
+                    }
 
             }
             return null;

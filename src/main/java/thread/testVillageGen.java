@@ -1,5 +1,5 @@
-//tp 144 80 81184 erreur en 1.14 1.15 ?
-
+//tp 2880 80 110784
+//tp 4272 80 146176
 package thread;
 import kaptainwutax.biomeutils.biome.Biomes;
 import kaptainwutax.biomeutils.source.OverworldBiomeSource;
@@ -19,7 +19,7 @@ public class testVillageGen implements Runnable{
         private final int offset;
         private final int totalThreads;
         private  long startingPoint = new Random().nextLong();
-        private final MCVersion version = MCVersion.v1_17;
+        private final MCVersion version = MCVersion.v1_15;
 
         public testVillageGen(int offset, int totalThreads) {
             this.offset = offset;
@@ -37,7 +37,7 @@ public class testVillageGen implements Runnable{
 
                 structureSeed = 192731432848353L;
                 List<CPos> villePosList = new ArrayList<>();
-                for (int i=0;i<400;i++)for (int j=0;j<400;j++)
+                for (int i=0;i<400;i++)for (int j=157;j<400;j++)
                 villePosList.add(ville.getInRegion(structureSeed, i, j, chunkRand));
                 //CPos villePosList = new CPos(5129,4756);
                 CheckWorldSeed(structureSeed, villePosList,version);
@@ -66,20 +66,21 @@ public class testVillageGen implements Runnable{
 
             structureSeed = structureSeed & 281474976710655L;
             int numGenerationSucceed = 0;
-
             VillageGenerator villeGen = new VillageGenerator(version);
             for(long seed = 0;seed < 1<<3;seed++) {
                 long worldSeed = structureSeed | (seed<<48);
                 OverworldBiomeSource bs = new OverworldBiomeSource(version, worldSeed);
                 TerrainGenerator generator = TerrainGenerator.of(Dimension.OVERWORLD, bs);
                 for (CPos sPos : villePosList){
+                    sPos = new CPos(180,6924);
                     ChunkRand rand = new ChunkRand();
-                    if(!villeGen.generate(generator, sPos.getX(),sPos.getZ(),rand, Biomes.TAIGA))continue;
+                    if(!villeGen.generate(generator, sPos.getX(),sPos.getZ(),rand,Biomes.SNOWY_TUNDRA,true))continue;
                     int numBS = villeGen.getNumberOfBlackSmith();
-                    if(numBS>4){
+                    if(numBS>1){
                         System.out.println("worldSeed : " + worldSeed + " structureSeed " + structureSeed+" "+numBS+" /tp "+sPos.getX()*16+" 80 "+sPos.getZ()*16);
                     }
                     else{
+                        //villeGen.printPieces();
                     int a = villeGen.getNumberOfHouses();
                     if(a>36) {
                         System.out.println("worldSeed : " + worldSeed + " " + a+" "+sPos.toString());
