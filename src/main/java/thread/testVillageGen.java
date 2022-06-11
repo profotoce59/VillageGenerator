@@ -72,7 +72,6 @@ public class testVillageGen implements Runnable{
                 OverworldBiomeSource bs = new OverworldBiomeSource(version, worldSeed);
                 TerrainGenerator generator = TerrainGenerator.of(Dimension.OVERWORLD, bs);
                 for (CPos sPos : villePosList){
-                    sPos = new CPos(180,6924);
                     ChunkRand rand = new ChunkRand();
                     if(!villeGen.generate(generator, sPos.getX(),sPos.getZ(),rand,Biomes.SNOWY_TUNDRA,true))continue;
                     int numBS = villeGen.getNumberOfBlackSmith();
