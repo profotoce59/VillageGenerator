@@ -11,7 +11,12 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
-
+/*public static final enum Connect{
+    STREET,
+    BOTTOM,
+    BUILDING,
+    ERROR
+}*/
 public class SnowyVillageJigsawBlocks {
     public static final HashMap<String, List<Pair<Quad<String, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>>> JIGSAW_BLOCKS = new HashMap<>() {{
         this.putAll(CommonVillageJigsawBlocks.JIGSAW_BLOCKS);
