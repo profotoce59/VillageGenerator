@@ -200,7 +200,7 @@ public class VillageGenerator extends Generator {
         public boolean canAttach15(BlockJigsawInfo blockJigsawInfo2,BlockDirection direction) { //1.15 version is faster and seems the same
 
             return direction == this.getOpposite(blockJigsawInfo2.getFront())
-                    && this.nbt.getSecond().equals(blockJigsawInfo2.nbt.getSecond());
+                    && this.nbt.getSecond().equals(blockJigsawInfo2.nbt.getSecond());//avoid using equals ENUMTYPE instead of String
 
         }
     }
@@ -286,7 +286,7 @@ public class VillageGenerator extends Generator {
 
                             for (BlockRotation rotation1 : BlockRotation.getShuffled(rand) ) {
                                 //10k passages
-                                BPos size1 = STRUCTURE_SIZE.get(jigsawpiece1);
+                                BPos size1 = STRUCTURE_SIZE.get(jigsawpiece1);//size1 out of for
                                  //le retirer plus tard on s'en fou des villageois
                                 BlockBox box1;
                                 if(size1 == null){
@@ -309,7 +309,7 @@ public class VillageGenerator extends Generator {
                                         } else {//36k passages optimized
                                             int k3;
                                             int l3;
-                                                k3 = VillagePoolYMax.Y_MAX.get(p_242841_2_.nbt.getFirst());
+                                                k3 = VillagePoolYMax.Y_MAX.get(p_242841_2_.nbt.getFirst());//try to see exactly what is it doing
                                                 String fallbackLocation2 = villageType.getPool(generator.getVersion()).get(p_242841_2_.nbt.getFirst()).getFirst();
                                                 l3 = VillagePoolYMax.Y_MAX.get(fallbackLocation2);
                                             return Math.max(k3, l3);
@@ -348,6 +348,7 @@ public class VillageGenerator extends Generator {
                                             if (state == -1) {
                                                 if(this.useHeightMapOptimizer){
                                                     state = this.sGen.generateColumnfromY(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
+                                                    //try to make a Ymax who change during the gen and see the %error should be faster but increases the error ?
                                                 }
                                                 else{
                                                     state = this.generator.getFirstHeightInColumn(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
