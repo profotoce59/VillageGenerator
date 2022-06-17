@@ -978,7 +978,8 @@ public class VillageGenerator extends Generator {
             }
             return null;
         }
-
+//si ca prend beaucoup de temps celle ci en particulier faire une enumMap Desert1.15,Desert1.16,Desert1.17, Plains1.15 etc...
+//make all of that static to avoid put everyTime we gon in this function ?
         public HashMap<String, List<Pair<Quad<String, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>>> getJigsawBlocks(MCVersion version) {
             if(version.isOlderThan(MCVersion.v1_16)){
                 switch(this) {
