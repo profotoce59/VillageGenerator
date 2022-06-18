@@ -1,5 +1,6 @@
 package reecriture.VillagePools;
 
+import enumType.PoolType;
 import kaptainwutax.mcutils.util.data.Pair;
 import kaptainwutax.mcutils.util.data.Triplet;
 import properties.VillageGenerator;
@@ -9,9 +10,9 @@ import java.util.*;
 public interface PlainPool {
 
 
-    public static final Map<String, Triplet<String, List<Pair<String, Integer>>, VillageGenerator.PlacementBehaviour>> VILLAGE_POOLS = new HashMap<String, Triplet<String, List<Pair<String, Integer>>, VillageGenerator.PlacementBehaviour>>() {{
+    public static final EnumMap<PoolType, Triplet<PoolType, List<Pair<String, Integer>>, VillageGenerator.PlacementBehaviour>> VILLAGE_POOLS = new EnumMap<>(PoolType.class) {{
 
-        put("plains/town_centers", new Triplet<>("empty", Arrays.asList(
+        put(PoolType.PLAIN_CENTER, new Triplet<>(PoolType.EMPTY, Arrays.asList(
                 new Pair<>("plains/town_centers/plains_fountain_01", 50),
                 new Pair<>("plains/town_centers/plains_meeting_point_1",  50),
                 new Pair<>("plains/town_centers/plains_meeting_point_2", 50),
@@ -22,7 +23,7 @@ public interface PlainPool {
                 new Pair<>("plains/zombie/town_centers/plains_meeting_point_3",  1)
                 ), VillageGenerator.PlacementBehaviour.RIGID));
 
-        put("plains/streets", new Triplet<>("plains/terminators", Arrays.asList(
+        put(PoolType.PLAIN_STREET, new Triplet<>(PoolType.PLAIN_TERMINATOR, Arrays.asList(
             new Pair<>("plains/streets/corner_01", 2),
                 new Pair<>("plains/streets/corner_02", 2),
                         new Pair<>("plains/streets/corner_03", 2),
@@ -40,7 +41,7 @@ public interface PlainPool {
                         new Pair<>("plains/streets/crossroad_06", 2),
                         new Pair<>("plains/streets/turn_01", 3)
                         ), VillageGenerator.PlacementBehaviour.TERRAIN_MATCHING));
-    put("plains/zombie/streets", new Triplet<>("plains/terminators", Arrays.asList(
+    put(PoolType.PLAIN_ZSTREET, new Triplet<>(PoolType.PLAIN_TERMINATOR, Arrays.asList(
             new Pair<>("plains/zombie/streets/corner_01", 2),
                 new Pair<>("plains/zombie/streets/corner_02", 2),
                         new Pair<>("plains/zombie/streets/corner_03", 2),
@@ -58,7 +59,7 @@ public interface PlainPool {
                         new Pair<>("plains/zombie/streets/crossroad_06", 2),
                         new Pair<>("plains/zombie/streets/turn_01", 3)
                         ), VillageGenerator.PlacementBehaviour.TERRAIN_MATCHING));
-    put("plains/zombie/houses", new Triplet<>("plains/terminators", Arrays.asList(
+    put(PoolType.PLAIN_ZHOUSES, new Triplet<>(PoolType.PLAIN_TERMINATOR, Arrays.asList(
             new Pair<>("plains/zombie/houses/plains_small_house_1", 2),
                 new Pair<>("plains/zombie/houses/plains_small_house_2", 2),
                         new Pair<>("plains/zombie/houses/plains_small_house_3", 2),
@@ -96,7 +97,7 @@ public interface PlainPool {
                         new Pair<>("plains/zombie/houses/plains_meeting_point_5", 1),
                         new Pair<>("empty", 10)
                         ), VillageGenerator.PlacementBehaviour.RIGID));
-    put("plains/houses", new Triplet<>("plains/terminators", Arrays.asList(
+    put(PoolType.PLAIN_HOUSES, new Triplet<>(PoolType.PLAIN_TERMINATOR, Arrays.asList(
             new Pair<>("plains/houses/plains_small_house_1", 2),
                 new Pair<>("plains/houses/plains_small_house_2", 2),
                         new Pair<>("plains/houses/plains_small_house_3", 2),
@@ -135,80 +136,38 @@ public interface PlainPool {
                         new Pair<>("plains/houses/plains_meeting_point_5", 1),
                         new Pair<>("empty", 10)
                         ), VillageGenerator.PlacementBehaviour.RIGID));
-    put("plains/terminators", new Triplet<>("empty", Arrays.asList(
+    put(PoolType.PLAIN_TERMINATOR, new Triplet<>(PoolType.EMPTY, Arrays.asList(
             new Pair<>("plains/terminators/terminator_01", 1),
                 new Pair<>("plains/terminators/terminator_02", 1),
                         new Pair<>("plains/terminators/terminator_03", 1),
                         new Pair<>("plains/terminators/terminator_04", 1)
                         ), VillageGenerator.PlacementBehaviour.TERRAIN_MATCHING));
-    put("plains/trees", new Triplet<>("empty", Collections.singletonList(
+    put(PoolType.PLAIN_TREE, new Triplet<>(PoolType.EMPTY, Collections.singletonList(
             new Pair<>("oak", 1)
         ), VillageGenerator.PlacementBehaviour.RIGID));
-    put("plains/decor", new Triplet<>("empty", Arrays.asList(
+    put(PoolType.PLAIN_DECOR, new Triplet<>(PoolType.EMPTY, Arrays.asList(
             new Pair<>("plains/plains_lamp_1", 2),
                 new Pair<>("oak", 1),
                         new Pair<>("flower_plain", 1),
                         new Pair<>("pile_hay", 1),
                         new Pair<>("empty", 2)
                         ), VillageGenerator.PlacementBehaviour.RIGID));
-    put("plains/zombie/decor", new Triplet<>("empty", Arrays.asList(
+    put(PoolType.PLAIN_ZDECOR, new Triplet<>(PoolType.EMPTY, Arrays.asList(
             new Pair<>("plains/plains_lamp_1", 1),
                 new Pair<>("oak", 1),
                         new Pair<>("flower_plain", 1),
                         new Pair<>("pile_hay", 1),
                         new Pair<>("empty", 2)
                         ), VillageGenerator.PlacementBehaviour.RIGID));
-    put("plains/villagers", new Triplet<>("empty", Arrays.asList(
+    put(PoolType.PLAIN_VILLAGER, new Triplet<>(PoolType.EMPTY, Arrays.asList(
             new Pair<>("plains/villagers/nitwit", 1),
                 new Pair<>("plains/villagers/baby", 1),
                         new Pair<>("plains/villagers/unemployed", 10)
                         ), VillageGenerator.PlacementBehaviour.RIGID));
-    put("plains/zombie/villagers", new Triplet<>("empty", Arrays.asList(
+    put(PoolType.PLAIN_ZVILLAGER, new Triplet<>(PoolType.EMPTY, Arrays.asList(
             new Pair<>("plains/zombie/villagers/nitwit", 1),
                 new Pair<>("plains/zombie/villagers/unemployed", 10)
                         ), VillageGenerator.PlacementBehaviour.RIGID));
-    put("common/animals", new Triplet<>("empty", Arrays.asList(
-            new Pair<>("common/animals/cows_1", 7),
-                new Pair<>("common/animals/pigs_1", 7),
-                        new Pair<>("common/animals/horses_1", 1),
-                        new Pair<>("common/animals/horses_2", 1),
-                        new Pair<>("common/animals/horses_3", 1),
-                        new Pair<>("common/animals/horses_4", 1),
-                        new Pair<>("common/animals/horses_5", 1),
-                        new Pair<>("common/animals/sheep_1", 1),
-                        new Pair<>("common/animals/sheep_2", 1),
-                        new Pair<>("empty", 5)
-                        ), VillageGenerator.PlacementBehaviour.RIGID));
-    put("common/sheep", new Triplet<>("empty", Arrays.asList(
-            new Pair<>("common/animals/sheep_1", 1),
-                new Pair<>("common/animals/sheep_2", 1)
-                        ), VillageGenerator.PlacementBehaviour.RIGID));
-    put("common/cats", new Triplet<>("empty", Arrays.asList(
-            new Pair<>("common/animals/cat_black", 1),
-                new Pair<>("common/animals/cat_british", 1),
-                        new Pair<>("common/animals/cat_calico", 1),
-                        new Pair<>("common/animals/cat_persian", 1),
-                        new Pair<>("common/animals/cat_ragdoll", 1),
-                        new Pair<>("common/animals/cat_red", 1),
-                        new Pair<>("common/animals/cat_siamese", 1),
-                        new Pair<>("common/animals/cat_tabby", 1),
-                        new Pair<>("common/animals/cat_white", 1),
-                        new Pair<>("common/animals/cat_jellie", 1),
-                        new Pair<>("empty", 3)
-                        ), VillageGenerator.PlacementBehaviour.RIGID));
-    put("common/butcher_animals", new Triplet<>("empty", Arrays.asList(
-            new Pair<>("common/animals/cows_1", 3),
-                new Pair<>("common/animals/pigs_1", 3),
-                        new Pair<>("common/animals/sheep_1", 1),
-                        new Pair<>("common/animals/sheep_2", 1)
-                        ), VillageGenerator.PlacementBehaviour.RIGID));
-    put("common/iron_golem", new Triplet<>("empty", Collections.singletonList(
-            new Pair<>("common/iron_golem", 1)
-        ), VillageGenerator.PlacementBehaviour.RIGID));
-    put("common/well_bottoms", new Triplet<>("empty", Collections.singletonList(
-            new Pair<>("common/well_bottom", 1)
-        ), VillageGenerator.PlacementBehaviour.RIGID));
-    put("empty", new Triplet<>("empty",Collections.singletonList(
-            new Pair<>("empty", 0)
-        ), VillageGenerator.PlacementBehaviour.RIGID));
+    putAll(CommonPool.VILLAGE_POOLS);
+
 }};}

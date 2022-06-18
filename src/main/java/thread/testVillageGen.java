@@ -1,5 +1,5 @@
-//tp 2880 80 110784
-//tp 4272 80 146176
+//tp 17920 80 122560 because of height map
+
 package thread;
 import kaptainwutax.biomeutils.biome.Biomes;
 import kaptainwutax.biomeutils.source.OverworldBiomeSource;
@@ -73,13 +73,12 @@ public class testVillageGen implements Runnable{
                 TerrainGenerator generator = TerrainGenerator.of(Dimension.OVERWORLD, bs);
                 for (CPos sPos : villePosList){
                     ChunkRand rand = new ChunkRand();
-                    if(!villeGen.generate(generator, sPos.getX(),sPos.getZ(),rand,Biomes.SNOWY_TUNDRA,true))continue;
+                    if(!villeGen.generate(generator, sPos.getX(),sPos.getZ(),rand,true))continue;
                     int numBS = villeGen.getNumberOfBlackSmith();
                     if(numBS>1){
                         System.out.println("worldSeed : " + worldSeed + " structureSeed " + structureSeed+" "+numBS+" /tp "+sPos.getX()*16+" 80 "+sPos.getZ()*16);
                     }
                     else{
-                        //villeGen.printPieces();
                     int a = villeGen.getNumberOfHouses();
                     if(a>36) {
                         System.out.println("worldSeed : " + worldSeed + " " + a+" "+sPos.toString());

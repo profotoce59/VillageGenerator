@@ -1,76 +1,79 @@
 package reecriture.VillagePools;
 
+import enumType.PoolType;
+
+import java.util.EnumMap;
 import java.util.HashMap;
 
 public class VillagePoolYMax {
-    public static final HashMap<String, Integer> Y_MAX = new HashMap<>() {{
+    public static final EnumMap<PoolType, Integer> Y_MAX = new EnumMap<>(PoolType.class) {{
 
-        put("common/animals",3);
-        put("common/sheep",3);
-        put("common/cats",3);
-        put("common/butcher_animals",3);
-        put("common/iron_golem",3);
-        put("common/well_bottoms",3);
+        put(PoolType.ANIMALS,3);
+        put(PoolType.SHEEPS,3);
+        put(PoolType.CATS,3);
+        put(PoolType.BUTCHER_ANIMAL,3);
+        put(PoolType.IRON_GOLEM,3);
+        put(PoolType.WELL_BOTTOM,3);
 
-        put("plains/town_centers",9);
-        put("plains/streets",2);
-        put("plains/zombie/streets",2);
-        put("plains/houses",12);
-        put("plains/zombie/houses",12);
-        put("plains/decor",4);
-        put("plains/zombie/decor",4);
-        put("plains/villagers",3);
-        put("plains/zombie/villagers",3);
-        put("plains/terminators",2);
-        put("plains/trees",0);
+        put(PoolType.PLAIN_CENTER,9);
+        put(PoolType.PLAIN_STREET,2);
+        put(PoolType.PLAIN_ZSTREET,2);
+        put(PoolType.PLAIN_HOUSES,12);
+        put(PoolType.PLAIN_ZHOUSES,12);
+        put(PoolType.PLAIN_DECOR,4);
+        put(PoolType.PLAIN_ZDECOR,4);
+        put(PoolType.PLAIN_VILLAGER,3);
+        put(PoolType.PLAIN_ZVILLAGER,3);
+        put(PoolType.PLAIN_TERMINATOR,2);
+        put(PoolType.PLAIN_TREE,0);
 
-        put("desert/town_centers",6);
-        put("desert/streets",2);
-        put("desert/zombie/streets",2);
-        put("desert/houses",18);
-        put("desert/zombie/houses",17);
-        put("desert/terminators",2);
-        put("desert/zombie/terminators",2);
-        put("desert/decor",4);
-        put("desert/zombie/decor",4);
-        put("desert/villagers",3);
-        put("desert/zombie/villagers",3);
+        put(PoolType.DESERT_CENTER,6);
+        put(PoolType.DESERT_STREET,2);
+        put(PoolType.DESERT_ZSTREET,2);
+        put(PoolType.DESERT_HOUSES,18);
+        put(PoolType.DESERT_ZHOUSES,17);
+        put(PoolType.DESERT_TERMINATOR,2);
+        put(PoolType.DESERT_ZTERMINATOR,2);
+        put(PoolType.DESERT_DECOR,4);
+        put(PoolType.DESERT_ZDECOR,4);
+        put(PoolType.DESERT_VILLAGER,3);
+        put(PoolType.DESERT_ZVILLAGER,3);
 
-        put("empty",0);
-        put("taiga/terminators",2);
-        put("taiga/town_centers",7);
-        put("taiga/streets",2);
-        put("taiga/zombie/streets",2);
-        put("taiga/houses",14);
-        put("taiga/zombie/houses",14);
-        put("taiga/decor",2);
-        put("taiga/zombie/decor",2);
-        put("taiga/villagers",3);
-        put("taiga/zombie/villagers",3);
+        put(PoolType.EMPTY,0);
+        put(PoolType.TAIGA_TERMINATOR,2);
+        put(PoolType.TAIGA_CENTER,7);
+        put(PoolType.TAIGA_STREET,2);
+        put(PoolType.TAIGA_ZSTREET,2);
+        put(PoolType.TAIGA_HOUSES,14);
+        put(PoolType.TAIGA_ZHOUSES,14);
+        put(PoolType.TAIGA_DECOR,2);
+        put(PoolType.TAIGA_ZDECOR,2);
+        put(PoolType.TAIGA_VILLAGER,3);
+        put(PoolType.TAIGA_ZVILLAGER,3);
 
-        put("savanna/terminators",2);
-        put("savanna/zombie/terminators",2);
-        put("savanna/town_centers",6);
-        put("savanna/streets",2);
-        put("savanna/zombie/streets",2);
-        put("savanna/houses",14);
-        put("savanna/zombie/houses",10);
-        put("savanna/decor",2);
-        put("savanna/zombie/decor",2);
-        put("savanna/villagers",3);
-        put("savanna/zombie/villagers",3);
-        put("savanna/trees",1);
+        put(PoolType.SAVANNA_TERMINATOR,2);
+        put(PoolType.SAVANNA_ZTERMINATOR,2);
+        put(PoolType.SAVANNA_CENTER,6);
+        put(PoolType.SAVANNA_STREET,2);
+        put(PoolType.SAVANNA_ZSTREET,2);
+        put(PoolType.SAVANNA_HOUSES,14);
+        put(PoolType.SAVANNA_ZHOUSES,10);
+        put(PoolType.SAVANNA_DECOR,2);
+        put(PoolType.SAVANNA_ZDECOR,2);
+        put(PoolType.SAVANNA_VILLAGER,3);
+        put(PoolType.SAVANNA_ZVILLAGER,3);
+        put(PoolType.SAVANNA_TREE,1);
 
-        put("snowy/terminators",2);
-        put("snowy/town_centers",8);
-        put("snowy/streets",2);
-        put("snowy/zombie/streets",2);
-        put("snowy/houses",14);
-        put("snowy/zombie/houses",9);
-        put("snowy/decor",4); //not sure about the zombies
-        put("snowy/zombie/decor",4);
-        put("snowy/villagers",3);
-        put("snowy/zombie/villagers",3);
+        put(PoolType.SNOWY_TERMINATOR,2);
+        put(PoolType.SNOWY_CENTER,8);
+        put(PoolType.SNOWY_STREET,2);
+        put(PoolType.SNOWY_ZSTREET,2);
+        put(PoolType.SNOWY_HOUSES,14);
+        put(PoolType.SNOWY_ZHOUSES,9);
+        put(PoolType.SNOWY_DECOR,4); //not sure about the zombies
+        put(PoolType.SNOWY_ZDECOR,4);
+        put(PoolType.SNOWY_VILLAGER,3);
+        put(PoolType.SNOWY_ZVILLAGER,3);
     }};
 
 

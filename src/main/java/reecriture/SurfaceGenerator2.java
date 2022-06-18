@@ -30,7 +30,7 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
     private final double densityFactor;
     private final double densityOffset;
     private final Map<Long, double[]> noiseColumnCache = new HashMap<>();
-    private final int startSizeY;
+    private int startSizeY;
 
     public SurfaceGenerator2(BiomeSource biomeSource, int worldHeight, int horizontalNoiseResolution, int verticalNoiseResolution, NoiseSettings noiseSettings, double densityFactor, double densityOffset, boolean useSimplexNoise,int startSizeY) {
         super(biomeSource, worldHeight, horizontalNoiseResolution, verticalNoiseResolution, noiseSettings, densityFactor, densityOffset, useSimplexNoise);
@@ -44,9 +44,14 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
         this.mainPerlinNoise = new OctavePerlinNoiseSampler(this.random1, IntStream.rangeClosed(-7, 0));
         this.densityFactor = densityFactor;
         this.densityOffset = densityOffset;
-        this.startSizeY = startSizeY;
+        this.startSizeY = Math.round(startSizeY/8);
     }
+    public void setStartSizeY(int newStartSize){
 
+        if(Math.round(newStartSize/8)>this.startSizeY){
+            this.startSizeY = Math.round(newStartSize/8);
+        }
+    }
     @Override
     public Dimension getDimension() {
         return null;

@@ -1,5 +1,6 @@
 package reecriture.VillagePools;
 
+import enumType.PoolType;
 import kaptainwutax.mcutils.util.data.Pair;
 import kaptainwutax.mcutils.util.data.Triplet;
 import properties.VillageGenerator;
@@ -7,14 +8,14 @@ import properties.VillageGenerator;
 import java.util.*;
 
 public interface TaigaPool {
-    public static final Map<String, Triplet<String, List<Pair<String, Integer>>, VillageGenerator.PlacementBehaviour>> VILLAGE_POOLS = new HashMap<String, Triplet<String, List<Pair<String, Integer>>, VillageGenerator.PlacementBehaviour>>() {{
+    public static final EnumMap<PoolType, Triplet<PoolType, List<Pair<String, Integer>>, VillageGenerator.PlacementBehaviour>> VILLAGE_POOLS = new EnumMap<>(PoolType.class) {{
 
-        put("taiga/town_centers", new Triplet<>("empty", Arrays.asList(
+        put(PoolType.TAIGA_CENTER, new Triplet<>(PoolType.EMPTY, Arrays.asList(
  new Pair<>("taiga/town_centers/taiga_meeting_point_1", 49),
  new Pair<>("taiga/town_centers/taiga_meeting_point_2", 49),
  new Pair<>("taiga/zombie/town_centers/taiga_meeting_point_1", 1),
  new Pair<>("taiga/zombie/town_centers/taiga_meeting_point_2", 1)), VillageGenerator.PlacementBehaviour.RIGID));
-    put("taiga/streets", new Triplet<>("taiga/terminators", Arrays.asList(
+    put(PoolType.TAIGA_STREET, new Triplet<>(PoolType.TAIGA_TERMINATOR, Arrays.asList(
  new Pair<>("taiga/streets/corner_01", 2), 
  new Pair<>("taiga/streets/corner_02", 2), 
  new Pair<>("taiga/streets/corner_03" ,2), 
@@ -31,7 +32,7 @@ public interface TaigaPool {
  new Pair<>("taiga/streets/crossroad_05", 2), 
  new Pair<>("taiga/streets/crossroad_06", 2), 
  new Pair<>("taiga/streets/turn_01", 3)), VillageGenerator.PlacementBehaviour.TERRAIN_MATCHING));
-    put("taiga/zombie/streets", new Triplet<>("taiga/terminators", Arrays.asList(
+    put(PoolType.TAIGA_ZSTREET, new Triplet<>(PoolType.TAIGA_TERMINATOR, Arrays.asList(
  new Pair<>("taiga/zombie/streets/corner_01", 2), 
  new Pair<>("taiga/zombie/streets/corner_02", 2), 
  new Pair<>("taiga/zombie/streets/corner_03" ,2), 
@@ -48,7 +49,7 @@ public interface TaigaPool {
  new Pair<>("taiga/zombie/streets/crossroad_05" ,2), 
  new Pair<>("taiga/zombie/streets/crossroad_06", 2), 
  new Pair<>("taiga/zombie/streets/turn_01", 3)), VillageGenerator.PlacementBehaviour.TERRAIN_MATCHING));
-    put("taiga/houses", new Triplet<>("taiga/terminators", Arrays.asList(
+    put(PoolType.TAIGA_HOUSES, new Triplet<>(PoolType.TAIGA_TERMINATOR, Arrays.asList(
  new Pair<>("taiga/houses/taiga_small_house_1", 4), 
  new Pair<>("taiga/houses/taiga_small_house_2", 4), 
  new Pair<>("taiga/houses/taiga_small_house_3", 4), 
@@ -77,7 +78,7 @@ public interface TaigaPool {
  new Pair<>("taiga/houses/taiga_small_farm_1", 1), 
  new Pair<>("taiga/houses/taiga_animal_pen_1", 2), 
  new Pair<>("empty", 6)), VillageGenerator.PlacementBehaviour.RIGID));//ct comme ca
-    put("taiga/zombie/houses", new Triplet<>("taiga/terminators", Arrays.asList(
+    put(PoolType.TAIGA_ZHOUSES, new Triplet<>(PoolType.TAIGA_TERMINATOR, Arrays.asList(
  new Pair<>("taiga/zombie/houses/taiga_small_house_1",  4), 
  new Pair<>("taiga/zombie/houses/taiga_small_house_2",  4), 
  new Pair<>("taiga/zombie/houses/taiga_small_house_3",  4), 
@@ -105,12 +106,12 @@ public interface TaigaPool {
  new Pair<>("taiga/houses/taiga_small_farm_1",  1), 
  new Pair<>("taiga/houses/taiga_animal_pen_1",  2), 
  new Pair<>("empty", 6)), VillageGenerator.PlacementBehaviour.RIGID));//not sure
-    put("taiga/terminators", new Triplet<>("empty", Arrays.asList(
+    put(PoolType.TAIGA_TERMINATOR, new Triplet<>(PoolType.EMPTY, Arrays.asList(
  new Pair<>("plains/terminators/terminator_01", 1),
  new Pair<>("plains/terminators/terminator_02", 1),
  new Pair<>("plains/terminators/terminator_03", 1),
  new Pair<>("plains/terminators/terminator_04", 1)), VillageGenerator.PlacementBehaviour.TERRAIN_MATCHING));
-    put("taiga/decor", new Triplet<>("empty", Arrays.asList(
+    put(PoolType.TAIGA_DECOR, new Triplet<>(PoolType.EMPTY, Arrays.asList(
          new Pair<>("taiga/taiga_lamp_post_1", 10),
          new Pair<>("taiga/taiga_decoration_1", 4),
          new Pair<>("taiga/taiga_decoration_2", 1),
@@ -124,7 +125,7 @@ public interface TaigaPool {
          new Pair<>("taiga/patch_taiga_grass", 4),
          new Pair<>("taiga/patch_berry_bush", 1),
          new Pair<>("empty", 4)), VillageGenerator.PlacementBehaviour.RIGID));
-    put("taiga/zombie/decor", new Triplet<>("empty", Arrays.asList(
+    put(PoolType.TAIGA_ZDECOR, new Triplet<>(PoolType.EMPTY, Arrays.asList(
             new Pair<>("taiga/taiga_decoration_1", 4),
             new Pair<>("taiga/taiga_decoration_2", 1),
             new Pair<>("taiga/taiga_decoration_3", 1),
@@ -135,54 +136,14 @@ public interface TaigaPool {
             new Pair<>("taiga/patch_taiga_grass", 4),
             new Pair<>("taiga/patch_berry_bush", 1),
             new Pair<>("empty", 4)), VillageGenerator.PlacementBehaviour.RIGID));
-    put("taiga/villagers", new Triplet<>("empty", Arrays.asList(
+    put(PoolType.TAIGA_VILLAGER, new Triplet<>(PoolType.EMPTY, Arrays.asList(
              new Pair<>("taiga/villagers/nitwit", 1),
              new Pair<>("taiga/villagers/baby", 1),
              new Pair<>("taiga/villagers/unemployed", 10)), VillageGenerator.PlacementBehaviour.RIGID));
-    put("taiga/zombie/villagers", new Triplet<>("empty", Arrays.asList(
+    put(PoolType.TAIGA_ZVILLAGER, new Triplet<>(PoolType.EMPTY, Arrays.asList(
              new Pair<>("taiga/zombie/villagers/nitwit", 1),
              new Pair<>("taiga/zombie/villagers/unemployed", 10)), VillageGenerator.PlacementBehaviour.RIGID));
-        put("common/cats", new Triplet<>("empty", Arrays.asList(
-                new Pair<>("common/animals/cat_black", 1),
-                new Pair<>("common/animals/cat_british", 1),
-                new Pair<>("common/animals/cat_calico", 1),
-                new Pair<>("common/animals/cat_persian", 1),
-                new Pair<>("common/animals/cat_ragdoll", 1),
-                new Pair<>("common/animals/cat_red", 1),
-                new Pair<>("common/animals/cat_siamese", 1),
-                new Pair<>("common/animals/cat_tabby", 1),
-                new Pair<>("common/animals/cat_white", 1),
-                new Pair<>("common/animals/cat_jellie", 1),
-                new Pair<>("empty", 3)
-        ), VillageGenerator.PlacementBehaviour.RIGID));
-        put("common/butcher_animals", new Triplet<>("empty", Arrays.asList(
-                new Pair<>("common/animals/cows_1", 3),
-                new Pair<>("common/animals/pigs_1", 3),
-                new Pair<>("common/animals/sheep_1", 1),
-                new Pair<>("common/animals/sheep_2", 1)
-        ), VillageGenerator.PlacementBehaviour.RIGID));
-        put("common/iron_golem", new Triplet<>("empty", Collections.singletonList(
-                new Pair<>("common/iron_golem", 1)
-        ), VillageGenerator.PlacementBehaviour.RIGID));
-        put("empty", new Triplet<>("empty",Collections.singletonList(
-                new Pair<>("empty", 0)
-        ), VillageGenerator.PlacementBehaviour.RIGID));
-        put("common/animals", new Triplet<>("empty", Arrays.asList(
-                new Pair<>("common/animals/cows_1", 7),
-                new Pair<>("common/animals/pigs_1", 7),
-                new Pair<>("common/animals/horses_1", 1),
-                new Pair<>("common/animals/horses_2", 1),
-                new Pair<>("common/animals/horses_3", 1),
-                new Pair<>("common/animals/horses_4", 1),
-                new Pair<>("common/animals/horses_5", 1),
-                new Pair<>("common/animals/sheep_1", 1),
-                new Pair<>("common/animals/sheep_2", 1),
-                new Pair<>("empty", 5)
-        ), VillageGenerator.PlacementBehaviour.RIGID));
-        put("common/sheep", new Triplet<>("empty", Arrays.asList(
-                new Pair<>("common/animals/sheep_1", 1),
-                new Pair<>("common/animals/sheep_2", 1)
-        ), VillageGenerator.PlacementBehaviour.RIGID));
+        putAll(CommonPool.VILLAGE_POOLS);
 
 
 }};}
