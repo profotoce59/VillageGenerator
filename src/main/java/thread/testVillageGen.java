@@ -71,9 +71,12 @@ public class testVillageGen implements Runnable{
                 long worldSeed = structureSeed | (seed<<48);
                 OverworldBiomeSource bs = new OverworldBiomeSource(version, worldSeed);
                 TerrainGenerator generator = TerrainGenerator.of(Dimension.OVERWORLD, bs);
+                int nb = 0;
                 for (CPos sPos : villePosList){
                     ChunkRand rand = new ChunkRand();
+
                     if(!villeGen.generate(generator, sPos.getX(),sPos.getZ(),rand,true))continue;
+                    //System.out.println(nb++);
                     int numBS = villeGen.getNumberOfBlackSmith();
                     if(numBS>1){
                         System.out.println("worldSeed : " + worldSeed + " structureSeed " + structureSeed+" "+numBS+" /tp "+sPos.getX()*16+" 80 "+sPos.getZ()*16);

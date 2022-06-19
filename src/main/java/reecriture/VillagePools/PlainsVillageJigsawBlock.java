@@ -664,9 +664,6 @@ public class PlainsVillageJigsawBlock {
         this.put("common/well_bottom", Collections.singletonList(
                 new Pair<>(new Quad<>(PoolType.WELL_BOTTOM, "bottom", new Pair<>(BlockDirection.UP,BlockDirection.SOUTH), Blocks.COBBLESTONE), new BPos(4,3,4))
         ));
-        this.put("pile_hay",Collections.singletonList(
-                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID),new BPos(0,0,0))
-        ));
         this.put("oak",Collections.singletonList(
                 new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID),new BPos(0,0,0))
         ));
@@ -1333,6 +1330,12 @@ public class PlainsVillageJigsawBlock {
         this.put("plains/zombie/villagers/unemployed", Collections.singletonList(
                 new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID), new BPos(0,0,0))
         ));
+        this.put("oak",Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("flower_plain",Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
     }};
     public static final HashMap<String, List<Pair<Quad<PoolType, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>>> JIGSAW_BLOCKS17 = new HashMap<>() {{
         this.putAll(CommonVillageJigsawBlocks.JIGSAW_BLOCKS);
@@ -1989,6 +1992,12 @@ public class PlainsVillageJigsawBlock {
         ));
         this.put("plains/zombie/villagers/unemployed", Collections.singletonList(
                 new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID), new BPos(0,0,0))
+        ));
+        this.put("oak",Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("flower_plain",Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID),new BPos(0,0,0))
         ));
     }};
 }

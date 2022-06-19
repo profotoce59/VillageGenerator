@@ -121,8 +121,8 @@ public interface DesertPool {
             ), VillageGenerator.PlacementBehaviour.RIGID));
             put(PoolType.DESERT_ZDECOR, new Triplet<>(PoolType.EMPTY, Arrays.asList(
                     new Pair<>("desert/desert_lamp_1", 10),
-                    new Pair<>("desert/patch_cactus", 4),
-                    new Pair<>("desert/pile_hay", 4),
+                    new Pair<>("patch_cactus", 4),
+                    new Pair<>("pile_hay", 4),
                     new Pair<>("empty", 10)
             ), VillageGenerator.PlacementBehaviour.RIGID));
             put(PoolType.DESERT_VILLAGER, new Triplet<>(PoolType.EMPTY, Arrays.asList(

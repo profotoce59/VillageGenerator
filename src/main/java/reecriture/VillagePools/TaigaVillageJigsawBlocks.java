@@ -602,6 +602,21 @@ public class TaigaVillageJigsawBlocks {
         this.put("taiga/zombie/villagers/unemployed", Collections.singletonList(
                 new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID), new BPos(0,0,0))
         ));
+        this.put("taiga/pine", Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("taiga/patch_taiga_grass", Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("taiga/pile_pumpkin", Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("taiga/patch_berry_bush", Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("taiga/spruce", Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
 
 
     }};
@@ -1192,6 +1207,21 @@ public class TaigaVillageJigsawBlocks {
         this.put("taiga/zombie/villagers/unemployed", Collections.singletonList(
                 new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID), new BPos(0,0,0))
         ));
+        this.put("taiga/pine", Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("taiga/patch_taiga_grass", Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("taiga/pile_pumpkin", Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("taiga/patch_berry_bush", Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("taiga/spruce", Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
     }};
     public static final HashMap<String, List<Pair<Quad<PoolType, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>>> JIGSAW_BLOCKS17 = new HashMap<>() {{
         this.putAll(CommonVillageJigsawBlocks.JIGSAW_BLOCKS);
@@ -1774,6 +1804,21 @@ public class TaigaVillageJigsawBlocks {
         ));
         this.put("taiga/zombie/villagers/unemployed", Collections.singletonList(
                 new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID), new BPos(0,0,0))
+        ));
+        this.put("taiga/pine", Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("taiga/patch_taiga_grass", Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("taiga/pile_pumpkin", Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("taiga/patch_berry_bush", Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("taiga/spruce", Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
         ));
     }};
 

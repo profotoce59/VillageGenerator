@@ -96,6 +96,12 @@ public class CommonVillageJigsawBlocks {
         this.put("plains/terminators/terminator_04", Collections.singletonList(
                 new Pair<>(new Quad<>(PoolType.EMPTY, "street", new Pair<>(BlockDirection.EAST,BlockDirection.UP), Blocks.STRUCTURE_VOID), new BPos(3,1,1))
         ));
+        this.put("patch_cactus", Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("pile_hay", Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
     }};
     public static final HashMap<String, List<Pair<Quad<PoolType, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>>> JIGSAW_BLOCKS15 = new HashMap<>() {{
         this.put("common/iron_golem", Collections.singletonList(
@@ -178,6 +184,12 @@ public class CommonVillageJigsawBlocks {
         ));
         this.put("plains/terminators/terminator_04", Collections.singletonList(
                 new Pair<>(new Quad<>(PoolType.PLAIN_STREET, "street", new Pair<>(BlockDirection.EAST,BlockDirection.UP), Blocks.STRUCTURE_VOID), new BPos(3,1,1))
+        ));
+        this.put("patch_cactus", Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("pile_hay", Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
         ));
 //"plains/streets" instead of empty for the terminator
     }};

@@ -581,6 +581,15 @@ public class SnowyVillageJigsawBlocks {
         this.put("snowy/zombie/villagers/unemployed", Collections.singletonList(
                 new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID), new BPos(0,0,0))
         ));
+        this.put("snowy/pile_snow",Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("snowy/pile_ice",Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("taiga/spruce",Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
     }};
 
 
@@ -1155,6 +1164,15 @@ public class SnowyVillageJigsawBlocks {
         this.put("snowy/zombie/villagers/unemployed", Collections.singletonList(
                 new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID), new BPos(0,0,0))
         ));
+        this.put("snowy/pile_snow",Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("snowy/pile_ice",Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("taiga/spruce",Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
     }};
     public static final HashMap<String, List<Pair<Quad<PoolType, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>>> JIGSAW_BLOCKS17 = new HashMap<>() {{
         this.putAll(CommonVillageJigsawBlocks.JIGSAW_BLOCKS);
@@ -1718,6 +1736,15 @@ public class SnowyVillageJigsawBlocks {
         ));
         this.put("snowy/zombie/villagers/unemployed", Collections.singletonList(
                 new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID), new BPos(0,0,0))
+        ));
+        this.put("snowy/pile_snow",Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("snowy/pile_ice",Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("taiga/spruce",Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID),new BPos(0,0,0))
         ));
     }};
 

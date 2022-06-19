@@ -602,6 +602,12 @@ public class SavannaVillageJigsawBlocks {
         this.put("savanna/zombie/villagers/unemployed", Collections.singletonList(
                 new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID), new BPos(0,0,0))
         ));
+        this.put("pile_melon",Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("savanna/acacia",Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
 
     }};
     public static final HashMap<String, List<Pair<Quad<PoolType, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>>> JIGSAW_BLOCKS15 = new HashMap<>() {{
@@ -1192,6 +1198,12 @@ public class SavannaVillageJigsawBlocks {
         this.put("savanna/zombie/villagers/unemployed", Collections.singletonList(
                 new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID), new BPos(0,0,0))
         ));
+        this.put("pile_melon",Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("savanna/acacia",Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
     }};
     public static final HashMap<String, List<Pair<Quad<PoolType, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>>> JIGSAW_BLOCKS17 = new HashMap<>() {{
         this.putAll(CommonVillageJigsawBlocks.JIGSAW_BLOCKS);
@@ -1766,6 +1778,12 @@ public class SavannaVillageJigsawBlocks {
         ));
         this.put("savanna/zombie/villagers/unemployed", Collections.singletonList(
                 new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID), new BPos(0,0,0))
+        ));
+        this.put("pile_melon",Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
+        this.put("savanna/acacia",Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID),new BPos(0,0,0))
         ));
     }};
 }

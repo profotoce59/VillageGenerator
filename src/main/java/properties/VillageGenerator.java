@@ -143,13 +143,9 @@ public class VillageGenerator extends Generator {
             this.boundsTop = boundsTop;
         }
 
-        public List<BlockJigsawInfo> getShuffledJigsawBlocks(VillageType villageType, BPos offset, JRand rand, MCVersion version) {
-
-            List<Pair<Quad<PoolType, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>> defaultValue = Collections.singletonList(
-                    new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
-            );
+        public List<BlockJigsawInfo> getShuffledJigsawBlocks(VillageType villageType, BPos offset, JRand rand, MCVersion version) {//taking 20% need to opti
             List<Pair<Quad<PoolType, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>> blocks = villageType.getJigsawBlocks(version)
-                    .getOrDefault(this.name,defaultValue);//a enlever maintenant que j'ai compris
+                    .get(this.name);
             List<BlockJigsawInfo> list = new ArrayList<>();
             for (Pair<Quad<PoolType, String, Pair<BlockDirection, BlockDirection>, Block>, BPos> b : blocks) {
                 BlockJigsawInfo blockJigsawInfo = new BlockJigsawInfo(b.getFirst()
@@ -227,7 +223,7 @@ public class VillageGenerator extends Generator {
                     NoiseSettings.create(0.9999999814507745, 0.9999999814507745, 80.0, 160.0)
                             .addTopSlide(-10, 3, 0)
                             .addBottomSlide(-30, 0, 0),
-                    1.0D, -0.46875D, true,heightY+15);//13*8
+                    1.0D, -0.46875D, true,heightY+25);//13*8
             /* ------- //13 -> 13*8 = 104 si le village est plus que 104, il y aura une mauvaise gen, mais permet d'optimiser de beaucoup.*/
         }
 
@@ -267,6 +263,7 @@ public class VillageGenerator extends Generator {
                         } else {
                             mutableobject1 = piece.getVoxelShape();
                         }
+                        boolean canSkip = !isNotEmpty(mutableobject1,relativeBlockPos);
                         LinkedList<String> list = new LinkedList<>();
 
                         if (depth != this.maxDepth) {
@@ -287,6 +284,11 @@ public class VillageGenerator extends Generator {
                             if (jigsawpiece1.equals("empty")){
                                 break;
                             }
+                            if(canSkip){
+                                int jigsawSize = villageType.getJigsawBlocks(generator.getVersion()).get(jigsawpiece1).size();
+                                rand.advance(4*(jigsawSize-1)+3);
+                                continue;
+                            }
 
 
                             for (BlockRotation rotation1 : BlockRotation.getShuffled(rand) ) {
@@ -302,6 +304,7 @@ public class VillageGenerator extends Generator {
                                 }
                                 Piece piece1 = new Piece(jigsawpiece1, BPos.ORIGIN, box1, rotation1, pool.getThird(),0);
                                 List<BlockJigsawInfo> list1 = piece1.getShuffledJigsawBlocks(villageType, BPos.ORIGIN, rand,generator.getVersion());
+                                //rand.advance()
                                 int i1;
                                 if (expansionHack && box1.getYSpan() <= 16) {
                                     i1 = maxHeightOfList(list1,box1);
@@ -335,7 +338,6 @@ public class VillageGenerator extends Generator {
                                             if (state == -1) {
                                                 if(this.useHeightMapOptimizer){
                                                     state = this.sGen.generateColumnfromY(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
-                                                    this.sGen.setStartSizeY(state+15);
                                                 }
                                                 else{
                                                     state = this.generator.getFirstHeightInColumn(blockPos.getX(), blockPos.getZ(),(block) -> block != Blocks.AIR);
@@ -364,18 +366,12 @@ public class VillageGenerator extends Generator {
                                             }
                                             continue label139;
                                         }
-
-
                                     }
                                 }
                             }
-
-
                         }
                     }
                 }
-
-
             }
         }
         private int maxHeightOfList(List<BlockJigsawInfo> list,BlockBox box){
@@ -409,8 +405,20 @@ public class VillageGenerator extends Generator {
             return true;
 
         }
+        private boolean isNotEmpty(VoxelShape voxelShape,BPos bpos){
+            for (BlockBox fullBox: voxelShape.fullBoxes){
+                fullBox.contains(bpos);
+                if(containsStrict(bpos,fullBox)){
+                    return false;
+                }
+            }
+            return true;
+        }
         public boolean intersects2(BlockBox box1,BlockBox box) {
             return box1.maxX >= box.minX && box1.minX < box.maxX && box1.maxZ >= box.minZ && box1.minZ < box.maxZ && box1.maxY >= box.minY && box1.minY < box.maxY;
+        }
+        public boolean containsStrict(BPos v,BlockBox box) {
+            return v.getX() > box.minX && v.getX() < box.maxX && v.getZ() > box.minZ && v.getZ() < box.maxZ && v.getY() > box.minY && v.getY() < box.maxY;
         }
     }
 

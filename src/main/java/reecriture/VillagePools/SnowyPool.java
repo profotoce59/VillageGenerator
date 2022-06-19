@@ -148,7 +148,8 @@ public interface SnowyPool {
               new Pair<>("snowy/snowy_lamp_post_01",1),
               new Pair<>("snowy/snowy_lamp_post_02",1),
               new Pair<>("snowy/snowy_lamp_post_03",1),
-              new Pair<>("taiga/spruce", 4), new Pair<>("snowy/pile_snow", 4), //here maybe to see
+              new Pair<>("taiga/spruce", 4),
+              new Pair<>("snowy/pile_snow", 4), //here maybe to see
               new Pair<>("snowy/pile_ice", 4),
               new Pair<>("empty", 7)), VillageGenerator.PlacementBehaviour.RIGID));
       put(PoolType.SNOWY_VILLAGER, new Triplet<>(PoolType.EMPTY, Arrays.asList(

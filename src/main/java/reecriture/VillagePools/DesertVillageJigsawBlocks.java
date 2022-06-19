@@ -1348,5 +1348,8 @@ public class DesertVillageJigsawBlocks {
         this.put("desert/zombie/villagers/unemployed", Collections.singletonList(
                 new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH), Blocks.STRUCTURE_VOID), new BPos(0,0,0))
         ));
+        this.put("patch_cactus", Collections.singletonList(
+                new Pair<>(new Quad<>(PoolType.EMPTY, "bottom", new Pair<>(BlockDirection.DOWN,BlockDirection.SOUTH) ,Blocks.STRUCTURE_VOID),new BPos(0,0,0))
+        ));
     }};
 }
