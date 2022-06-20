@@ -418,7 +418,7 @@ public class VillageGenerator extends Generator {
             return box1.maxX >= box.minX && box1.minX < box.maxX && box1.maxZ >= box.minZ && box1.minZ < box.maxZ && box1.maxY >= box.minY && box1.minY < box.maxY;
         }
         public boolean containsStrict(BPos v,BlockBox box) {
-            return v.getX() > box.minX && v.getX() < box.maxX && v.getZ() > box.minZ && v.getZ() < box.maxZ && v.getY() > box.minY && v.getY() < box.maxY;
+            return v.getX() >= box.minX && v.getX() < box.maxX && v.getZ() >= box.minZ && v.getZ() < box.maxZ && v.getY() >= box.minY && v.getY() < box.maxY;
         }
     }
 
