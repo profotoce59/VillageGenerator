@@ -1,3 +1,7 @@
+//faire un test avec la fonction shuffle 
+//1) Shuffle une arrayList de Integer
+//2) Shuffle une List avec plein de parametres
+//si c'est mieux regarder pour travailler avec les indexes
 package properties;
 //1971160871
 import enumType.PoolType;
