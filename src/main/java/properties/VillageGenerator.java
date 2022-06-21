@@ -1,7 +1,3 @@
-//faire un test avec la fonction shuffle 
-//1) Shuffle une arrayList de Integer
-//2) Shuffle une List avec plein de parametres
-//si c'est mieux regarder pour travailler avec les indexes
 package properties;
 //1971160871
 import enumType.PoolType;
@@ -29,6 +25,8 @@ import reecriture.*;
 import reecriture.VillagePools.*;
 
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 public class VillageGenerator extends Generator {
     public List<Piece> pieces;
@@ -40,6 +38,7 @@ public class VillageGenerator extends Generator {
     public boolean generate(TerrainGenerator generator, int chunkX, int chunkZ, ChunkRand rand,Biome biomeWanted,boolean useHeightMapOptimizer) {
         this.useHeightMapOptimizer = useHeightMapOptimizer;
         Biome biome = generator.getBiomeSource().getBiomeForNoiseGen((chunkX << 2) + 2, 0, (chunkZ << 2) + 2);
+        System.out.println(biome);
         if(!biomeWanted.equals(biome))return false;
         else return this.generate(generator,chunkX,chunkZ,rand);
     }
@@ -70,7 +69,6 @@ public class VillageGenerator extends Generator {
         JigSawPool jigSawPool = STARTS.get(villageType);
         String template = rand.getRandom(jigSawPool.getTemplates());
         //if(!template.equals("taiga/town_centers/taiga_meeting_point_2"))return false;  //to get the max number of street
-        //must be optional to be reusable
         BPos size = VillageStructureSize.STRUCTURE_SIZE.get(template);
         BPos bPos = new CPos(chunkX, chunkZ).toBlockPos(0);
         BlockBox box = BlockBox.getBoundingBox(bPos, rotation, BPos.ORIGIN, BlockMirror.NONE, size);
@@ -150,17 +148,18 @@ public class VillageGenerator extends Generator {
         public List<BlockJigsawInfo> getShuffledJigsawBlocks(VillageType villageType, BPos offset, JRand rand, MCVersion version) {//taking 20% need to opti
             List<Pair<Quad<PoolType, String, Pair<BlockDirection,BlockDirection>, Block>, BPos>> blocks = villageType.getJigsawBlocks(version)
                     .get(this.name);
-            List<BlockJigsawInfo> list = new ArrayList<>();
+            List<BlockJigsawInfo> list = new ArrayList<>(blocks.size());
             for (Pair<Quad<PoolType, String, Pair<BlockDirection, BlockDirection>, Block>, BPos> b : blocks) {
-                BlockJigsawInfo blockJigsawInfo = new BlockJigsawInfo(b.getFirst()
-                        , b.getSecond().transform(BlockMirror.NONE, rotation, BPos.ORIGIN).add(offset),rotation );//erreur quand c'est up
+
+
+                        BlockJigsawInfo blockJigsawInfo = new BlockJigsawInfo(b.getFirst()
+                        , rotation.rotate(b.getSecond(),new BPos(0,0,0)).add(offset),rotation );//erreur quand c'est up
                 list.add(blockJigsawInfo);
             }
             rand.shuffle(list);
             return list;
 
         }
-
         public void setVoxelShape(VoxelShape mutableobject1) {
             this.voxelShape = mutableobject1;
         }
@@ -241,7 +240,7 @@ public class VillageGenerator extends Generator {
             int minY = box.minY;
             label139:
 
-            for (BlockJigsawInfo blockJigsawInfo : piece.getShuffledJigsawBlocks(villageType, pos, rand,generator.getVersion())) {//empty pour la first(ca devrait pas)
+            for (BlockJigsawInfo blockJigsawInfo : piece.getShuffledJigsawBlocks(villageType, pos, rand,generator.getVersion())) {
                 BlockDirection blockDirection = blockJigsawInfo.getFront();
                 BPos blockPos = blockJigsawInfo.pos;
                 BPos relativeBlockPos = new BPos(blockPos.getX() + blockDirection.getVector().getX(),
@@ -267,7 +266,6 @@ public class VillageGenerator extends Generator {
                         } else {
                             mutableobject1 = piece.getVoxelShape();
                         }
-                        boolean canSkip = !isNotEmpty(mutableobject1,relativeBlockPos);
                         LinkedList<String> list = new LinkedList<>();
 
                         if (depth != this.maxDepth) {
@@ -288,16 +286,15 @@ public class VillageGenerator extends Generator {
                             if (jigsawpiece1.equals("empty")){
                                 break;
                             }
-                            if(canSkip){
-                                int jigsawSize = villageType.getJigsawBlocks(generator.getVersion()).get(jigsawpiece1).size();
-                                rand.advance(4*(jigsawSize-1)+3);
-                                continue;
-                            }
+
+                            BPos size1 = VillageStructureSize.STRUCTURE_SIZE.get(jigsawpiece1);
+
+
 
 
                             for (BlockRotation rotation1 : BlockRotation.getShuffled(rand) ) {
                                 //10k passages
-                                BPos size1 = VillageStructureSize.STRUCTURE_SIZE.get(jigsawpiece1);
+
                                  //le retirer plus tard on s'en fou des villageois
                                 BlockBox box1;
                                 if(size1 == null){
@@ -308,7 +305,7 @@ public class VillageGenerator extends Generator {
                                 }
                                 Piece piece1 = new Piece(jigsawpiece1, BPos.ORIGIN, box1, rotation1, pool.getThird(),0);
                                 List<BlockJigsawInfo> list1 = piece1.getShuffledJigsawBlocks(villageType, BPos.ORIGIN, rand,generator.getVersion());
-                                //rand.advance()
+
                                 int i1;
                                 if (expansionHack && box1.getYSpan() <= 16) {
                                     i1 = maxHeightOfList(list1,box1);
@@ -409,20 +406,8 @@ public class VillageGenerator extends Generator {
             return true;
 
         }
-        private boolean isNotEmpty(VoxelShape voxelShape,BPos bpos){
-            for (BlockBox fullBox: voxelShape.fullBoxes){
-                fullBox.contains(bpos);
-                if(containsStrict(bpos,fullBox)){
-                    return false;
-                }
-            }
-            return true;
-        }
         public boolean intersects2(BlockBox box1,BlockBox box) {
             return box1.maxX >= box.minX && box1.minX < box.maxX && box1.maxZ >= box.minZ && box1.minZ < box.maxZ && box1.maxY >= box.minY && box1.minY < box.maxY;
-        }
-        public boolean containsStrict(BPos v,BlockBox box) {
-            return v.getX() >= box.minX && v.getX() < box.maxX && v.getZ() >= box.minZ && v.getZ() < box.maxZ && v.getY() >= box.minY && v.getY() < box.maxY;
         }
     }
 
