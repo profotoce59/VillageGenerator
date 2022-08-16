@@ -4,6 +4,8 @@ import enumType.PoolType;
 import enumType.VillageType;
 import kaptainwutax.biomeutils.biome.Biome;
 import kaptainwutax.biomeutils.biome.Biomes;
+import kaptainwutax.featureutils.structure.RegionStructure;
+import kaptainwutax.featureutils.structure.Village;
 import kaptainwutax.featureutils.structure.generator.Generator;
 import kaptainwutax.mcutils.block.Block;
 import kaptainwutax.mcutils.block.Blocks;
@@ -25,8 +27,6 @@ import reecriture.*;
 import reecriture.VillagePools.*;
 
 import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 public class VillageGenerator extends Generator {
     public List<Piece> pieces;
@@ -38,7 +38,6 @@ public class VillageGenerator extends Generator {
     public boolean generate(TerrainGenerator generator, int chunkX, int chunkZ, ChunkRand rand,Biome biomeWanted,boolean useHeightMapOptimizer) {
         this.useHeightMapOptimizer = useHeightMapOptimizer;
         Biome biome = generator.getBiomeSource().getBiomeForNoiseGen((chunkX << 2) + 2, 0, (chunkZ << 2) + 2);
-        System.out.println(biome);
         if(!biomeWanted.equals(biome))return false;
         else return this.generate(generator,chunkX,chunkZ,rand);
     }
@@ -56,19 +55,23 @@ public class VillageGenerator extends Generator {
         Biome biome = generator.getBiomeSource().getBiomeForNoiseGen((chunkX << 2) + 2, 0, (chunkZ << 2) + 2);
         this.villageType = VillageType.getType(biome, generator.getVersion());
         if(this.villageType == null)return false;
+
         pieces = new ArrayList<>();
         rand = rand.asChunkRandDebugger();
+        Village village = new Village(this.getVersion());
+        if(!village.canStart((RegionStructure.Data<Village>)village.at(chunkX, chunkZ),generator.getWorldSeed(),rand)){
+            return false;
+        }
 
         rand.setCarverSeed(generator.getWorldSeed(), chunkX, chunkZ, generator.getVersion());
 
-        //wrong ??
         BlockRotation rotation = BlockRotation.getRandom(rand);
 
         // compute the template
 
         JigSawPool jigSawPool = STARTS.get(villageType);
         String template = rand.getRandom(jigSawPool.getTemplates());
-        //if(!template.equals("taiga/town_centers/taiga_meeting_point_2"))return false;  //to get the max number of street
+        //if(!template.equals("desert/town_centers/desert_meeting_point_2"))return false;  //to get the max number of street
         BPos size = VillageStructureSize.STRUCTURE_SIZE.get(template);
         BPos bPos = new CPos(chunkX, chunkZ).toBlockPos(0);
         BlockBox box = BlockBox.getBoundingBox(bPos, rotation, BPos.ORIGIN, BlockMirror.NONE, size);
@@ -152,7 +155,7 @@ public class VillageGenerator extends Generator {
             for (Pair<Quad<PoolType, String, Pair<BlockDirection, BlockDirection>, Block>, BPos> b : blocks) {
 
 
-                        BlockJigsawInfo blockJigsawInfo = new BlockJigsawInfo(b.getFirst()
+                BlockJigsawInfo blockJigsawInfo = new BlockJigsawInfo(b.getFirst()
                         , rotation.rotate(b.getSecond(),new BPos(0,0,0)).add(offset),rotation );//erreur quand c'est up
                 list.add(blockJigsawInfo);
             }
@@ -280,7 +283,7 @@ public class VillageGenerator extends Generator {
                             rand.shuffle(listtmp);
                             rand.advance(1);
                         }
-                            list.addAll(listtmp);
+                        list.addAll(listtmp);
                         for (String jigsawpiece1 : list) {
                             //2700 passages
                             if (jigsawpiece1.equals("empty")){
@@ -295,7 +298,7 @@ public class VillageGenerator extends Generator {
                             for (BlockRotation rotation1 : BlockRotation.getShuffled(rand) ) {
                                 //10k passages
 
-                                 //le retirer plus tard on s'en fou des villageois
+                                //le retirer plus tard on s'en fou des villageois
                                 BlockBox box1;
                                 if(size1 == null){
                                     box1 = new BlockBox(0,0,0,0,0,0);
@@ -357,6 +360,7 @@ public class VillageGenerator extends Generator {
                                             box3.maxY = box3.minY + k2;
                                         }
                                         if (isNotEmpty(mutableobject1,box3)) {
+                                            if(blockpos5.getY()<20)System.out.println(generator.getWorldSeed()+blockpos5.toString());
                                             mutableobject1.fullBoxes.add(new BlockBox(box3.minX,box3.minY,box3.minZ,
                                                     box3.maxX+1,box3.maxY+1,box3.maxZ+1));
                                             Piece piece2 = new Piece(jigsawpiece1,blockpos5,box3,rotation1,piece1.placementBehaviour,depth+1);
@@ -397,7 +401,7 @@ public class VillageGenerator extends Generator {
         private boolean isNotEmpty(VoxelShape voxelShape,BlockBox box1) {
             if(box1.minX<voxelShape.getX().get(0) || box1.minY<voxelShape.getY().get(0) || box1.minZ<voxelShape.getZ().get(0)
                     || box1.maxX>=voxelShape.getLastX() || box1.maxY>=voxelShape.getLastY() || box1.maxZ>=voxelShape.getLastZ()
-        )return false;
+            )return false;
             for (BlockBox fullBox: voxelShape.fullBoxes){
                 if(intersects2(box1,fullBox)){
                     return false;
@@ -440,9 +444,40 @@ public class VillageGenerator extends Generator {
         for (Piece piece : this.pieces) {
             if (piece.name.length() > 21) {
                 String pieceName = piece.name.substring(0,20);
-                if (pieceName.equals(villageType.getHouseName())) nb++;
+                if (pieceName.contains("houses")) nb++;
             }
         }
+        return nb;
+    }
+    public int getNumberOfCat(){
+        int nb = 0;
+        for (Piece piece : this.pieces) {
+            if (piece.name.length() > 21) {
+                String pieceName = piece.name.substring(10,piece.name.length());
+                if (pieceName.contains("cat")) nb++;
+
+            }
+        }
+        //tp 61 63 55
+
+        return nb;
+    }
+    public int getWrongVillage(){
+        int nb = 0;
+        for (Piece piece : this.pieces) {
+            if (piece.name.length() > 21) {
+                String pieceName = piece.name.substring(0,20);
+                if (pieceName.contains("houses") && !pieceName.contains("small_farm") ) {
+                    //
+                    if (pieceName.contains("plain")){
+                        nb++;
+                    }
+
+                }
+            }
+        }
+        //tp 61 63 55
+
         return nb;
     }
 
