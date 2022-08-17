@@ -2,12 +2,19 @@ package properties;
 //1971160871
 import enumType.PoolType;
 import enumType.VillageType;
+import java.lang.reflect.Type;
+import jdk.jshell.execution.Util;
 import kaptainwutax.biomeutils.biome.Biome;
-import kaptainwutax.biomeutils.biome.Biomes;
+import kaptainwutax.featureutils.loot.ChestContent;
+import kaptainwutax.featureutils.loot.LootContext;
+import kaptainwutax.featureutils.loot.LootPool;
+import kaptainwutax.featureutils.loot.LootTable;
+import kaptainwutax.featureutils.loot.item.ItemStack;
 import kaptainwutax.featureutils.structure.RegionStructure;
 import kaptainwutax.featureutils.structure.Village;
 import kaptainwutax.featureutils.structure.generator.Generator;
 import kaptainwutax.mcutils.block.Block;
+import kaptainwutax.mcutils.block.BlockState;
 import kaptainwutax.mcutils.block.Blocks;
 import kaptainwutax.mcutils.rand.ChunkRand;
 import kaptainwutax.mcutils.util.block.BlockBox;
@@ -20,18 +27,24 @@ import kaptainwutax.mcutils.util.data.Triplet;
 import kaptainwutax.mcutils.util.pos.BPos;
 import kaptainwutax.mcutils.util.pos.CPos;
 import kaptainwutax.mcutils.version.MCVersion;
+import kaptainwutax.noiseutils.noise.NoiseSampler;
+import kaptainwutax.noiseutils.perlin.PerlinNoiseSampler;
+import kaptainwutax.noiseutils.simplex.SimplexNoiseSampler;
 import kaptainwutax.seedutils.rand.JRand;
 import kaptainwutax.terrainutils.TerrainGenerator;
+import kaptainwutax.terrainutils.terrain.OverworldTerrainGenerator;
 import kaptainwutax.terrainutils.utils.NoiseSettings;
 import reecriture.*;
 import reecriture.VillagePools.*;
 
 import java.util.*;
+import utils.Utils;
 
 public class VillageGenerator extends Generator {
     public List<Piece> pieces;
     private VillageType villageType;
     private boolean useHeightMapOptimizer = true;
+    private boolean generated = false;
     public VillageGenerator(MCVersion version) {
         super(version);
     }
@@ -63,8 +76,15 @@ public class VillageGenerator extends Generator {
             return false;
         }
 
-        rand.setCarverSeed(generator.getWorldSeed(), chunkX, chunkZ, generator.getVersion());
+        if(!village.canSpawn(chunkX, chunkZ, generator.getBiomeSource())){
+            return false;
+        }
 
+        if(!village.canGenerate(chunkX, chunkZ, generator)){
+            return false;
+        }
+
+        rand.setCarverSeed(generator.getWorldSeed(), chunkX, chunkZ, generator.getVersion());
         BlockRotation rotation = BlockRotation.getRandom(rand);
 
         // compute the template
@@ -87,6 +107,7 @@ public class VillageGenerator extends Generator {
         piece.setBoundsTop(y + 80);
         BlockBox fullBox = new BlockBox(centerX - 80, y - 80, centerZ - 80, centerX + 80 + 1, y + 80 + 1, centerZ + 80 + 1);
         Assembler assembler = new Assembler(6, generator,this.pieces,useHeightMapOptimizer,heightY);
+        assembler.pieces.add(piece);
         VoxelShape a = new VoxelShape(fullBox);
         a.fullBoxes.add(new BlockBox(box.minX,box.minY,box.minZ,box.maxX+1,box.maxY+1,box.maxZ+1));
         piece.voxelShape = a;
@@ -94,7 +115,57 @@ public class VillageGenerator extends Generator {
         while(!assembler.placing.isEmpty()) {
             assembler.tryPlacing(villageType, assembler.placing.removeFirst(), rand, true);
         }
+        generated = true;
         return true;
+    }
+
+    public List<Pair<BPos, List<ItemStack>>> generateLoot(OverworldTerrainGenerator generator, ChunkRand rand){
+        if(!generated){
+            throw new IllegalArgumentException("No village generated yet, please call generate and make sure the call returns true");
+        }
+        List<Piece> generationPieces = new ArrayList<>(pieces);
+
+        BlockBox maxbox = generationPieces.stream().map(x -> x.box).reduce((piece1, piece2) -> new BlockBox(Math.min(piece1.minX, piece2.minX), Math.min(piece1.minY, piece2.minY), Math.min(piece1.minZ, piece2.minZ),
+             Math.max(piece1.maxX, piece2.maxX), Math.max(piece1.maxY, piece2.maxY), Math.max(piece1.maxZ, piece2.maxZ))).get();
+
+        for (int x = maxbox.minX>>4; x <= maxbox.maxX>>4; x++) {
+            for (int z = maxbox.minZ>>4; z <= maxbox.maxZ>>4; z++) {
+                generateChunkLoot(generationPieces, generator, x, z, rand);
+            }
+        }
+
+        return generationPieces.stream()
+            .filter(x -> !x.loot.isEmpty())
+            .map(x -> new Pair<BPos, List<ItemStack>>(x.pos, x.loot))
+            .toList();
+    }
+
+    private void generateChunkLoot(List<Piece> generationPieces, OverworldTerrainGenerator generator, int chunkX, int chunkZ, ChunkRand rand){
+        BlockBox startBox = new BlockBox(chunkX*16, chunkZ*16, chunkX*16 + 15, chunkZ*16 + 15);
+        long populationSeed = rand.setPopulationSeed(generator.getWorldSeed(), chunkX*16, chunkZ*16, generator.getVersion());
+
+        boolean confident = true;
+
+        // Numbers taken from 1.16.5 and 1.15
+        if(generator.getVersion().isOlderThan(MCVersion.v1_16)){
+            rand.setDecoratorSeed(populationSeed, 9, 3, generator.getVersion());
+        } else {
+            rand.setDecoratorSeed(populationSeed, 11, 4, generator.getVersion());
+        }
+        Iterator<Piece> iterator = generationPieces.iterator();
+        while(iterator.hasNext()) {
+            Piece piece = iterator.next();
+            if(piece.type==PieceType.Feature){
+                confident = false;
+            }
+//            if (piece.box.intersects(startBox) && !piece.place(rand, generator, confident)) {
+
+            // This is not what is done in minecraft code, but I'm going to remove every thing from the list after placing to avoid double generation
+            if (piece.box.intersects(startBox)) {
+                piece.place(rand, generator, confident);
+                iterator.remove();
+            }
+        }
     }
 
     @Override
@@ -118,6 +189,7 @@ public class VillageGenerator extends Generator {
 
 
     static public class Piece {
+        public static List<String> featureList = Arrays.asList("pile_hay", "snowy/pile_snow", "patch_cactus", "flower_plain", "oak", "acacia", "spruce", "pine");
         String name;
         public BPos pos;
         BlockBox box;
@@ -126,6 +198,8 @@ public class VillageGenerator extends Generator {
         PlacementBehaviour placementBehaviour;
         private VoxelShape voxelShape;
         int depth;
+        PieceType type;
+        List<ItemStack> loot = new ArrayList<>();
         public String getName(){
             return this.name;
         }
@@ -137,6 +211,13 @@ public class VillageGenerator extends Generator {
             this.placementBehaviour = placementBehaviour;
             this.voxelShape = new VoxelShape(box);
             this.depth = depth;
+            if(featureList.contains(name)){
+                type = PieceType.Feature;
+            } else if(name.equals("empty")){
+                type = PieceType.Empty;
+            } else {
+                type = PieceType.LegacySingle;
+            }
         }
 
         public void move(int x, int y, int z) {
@@ -161,8 +242,124 @@ public class VillageGenerator extends Generator {
             }
             rand.shuffle(list);
             return list;
-
         }
+
+        public boolean place(ChunkRand rand, OverworldTerrainGenerator otg, boolean confident){
+            return switch(type){
+                case Empty -> true;
+                case Feature -> switch (name){
+                    case "pile_hay" -> processPile(rand, otg, false);
+                    case "snowy/pile_snow" -> processPile(rand, otg, true);
+                    case "patch_cactus" -> processPatch(rand);
+                    case "flower_plain" -> processFlowerPlain(rand);
+                    case "oak" -> processOak(rand, otg);
+                    case "acacia" -> processAcacia(rand, otg);
+                    case "spruce" -> processSpruce(rand, otg);
+                    case "pine" -> processPine(rand, otg);
+                    default -> throw new IllegalArgumentException("Unknown feature in village: " + name);
+                };
+                case LegacySingle -> {
+                    List<LootTable> table = VillageStructureLoot.STRUCTURE_LOOT.get(name);
+                    if(table.isEmpty()){
+                        yield true;
+                    }
+                    long lootTableSeed = rand.nextLong();
+                    //If we have generated a feature this chunk, don't add the loot. We're not confident enough.
+                    if(confident) {
+                        loot.addAll(table.get(0)
+                            .generate(new LootContext(lootTableSeed, otg.getVersion())));
+                    }
+                    yield true;
+                }
+                default -> throw new IllegalArgumentException("Unknown piece type: " + type);
+            };
+        }
+
+        public boolean processPile(ChunkRand rand, OverworldTerrainGenerator otg, boolean snow){
+            int i = 2 + rand.nextInt(2);
+            int j = 2 + rand.nextInt(2);
+
+            for(BPos blockpos : Utils.getAllInBoxMutable(pos.add(-i, 0, -j), pos.add(i, 1, j))) {
+                int k = pos.getX() - blockpos.getX();
+                int l = pos.getZ() - blockpos.getZ();
+                if ((float)(k * k + l * l) <= rand.nextFloat() * 10.0F - rand.nextFloat() * 6.0F) {
+                    // Here we start gambling, this might turn the random wrong since we need exact world blocks to generate this and we simply don't have those.
+                    if (blockpos.getY() > otg.getHeightOnGround(blockpos.getX(), blockpos.getZ())) {
+                        if(!snow){
+                            // Account for hay bale rotation
+                            rand.nextInt(3);
+                        }
+                    }
+                } else if ((double)rand.nextFloat() < 0.031D) {
+                    // Here we start gambling, this might turn the random wrong since we need exact world blocks to generate this and we simply don't have those.
+                    if (blockpos.getY() > otg.getHeightOnGround(blockpos.getX(), blockpos.getZ())) {
+                        if(!snow){
+                            // Account for hay bale rotation
+                            rand.nextInt(3);
+                        }
+                    }
+                }
+            }
+            return true;
+        }
+
+        public boolean processPatch(ChunkRand rand){
+            for(int j = 0; j < 10; ++j) {
+                rand.nextInt(7 + 1);
+                rand.nextInt(7 + 1);
+                rand.nextInt(3 + 1);
+                rand.nextInt(3 + 1);
+                rand.nextInt(7 + 1);
+                rand.nextInt(7 + 1);
+                rand.nextInt(rand.nextInt(2 + 1) + 1);
+            }
+            return true;
+        }
+
+        public boolean processFlowerPlain(ChunkRand rand){
+            int blockstate;
+            SimplexNoiseSampler sampler = new SimplexNoiseSampler(new ChunkRand(2345L));
+            double d0 = sampler.sample2D((double)pos.getX() / 200.0D , (double)pos.getZ() / 200.0D);
+            if (d0 < -0.8D) {
+                blockstate =  rand.nextInt(4);
+            } else {
+                blockstate = rand.nextInt(3) > 0 ? rand.nextInt(4) : 0;
+            }
+
+            for(int j = 0; j < 64; ++j) {
+                rand.nextInt(7 + 1);
+                rand.nextInt(7 + 1);
+                rand.nextInt(3 + 1);
+                rand.nextInt(3 + 1);
+                rand.nextInt(7 + 1);
+                rand.nextInt(7 + 1);
+            }
+
+            return true;
+        }
+
+        public boolean processOak(ChunkRand rand, OverworldTerrainGenerator otg){
+            int i = 4 + rand.nextInt(2 + 1) + rand.nextInt(0 + 1);
+            return false;
+        }
+        private boolean processPine(ChunkRand rand, OverworldTerrainGenerator otg) {
+            int i = 6 + rand.nextInt(4 + 1) + rand.nextInt(0 + 1);
+            int j = 3 + rand.nextInt(1 + 1);
+            return false;
+        }
+
+        private boolean processSpruce(ChunkRand rand, OverworldTerrainGenerator otg) {
+            int i = 5 + rand.nextInt(2 + 1) + rand.nextInt(1 + 1);
+            int j = Math.max(4, i - 1 + rand.nextInt(1 + 1));
+            int l = 2 + rand.nextInt(1 + 1);
+            return false;
+        }
+
+        private boolean processAcacia(ChunkRand rand, OverworldTerrainGenerator otg) {
+            int i = 5 + rand.nextInt(2 + 1) + rand.nextInt(2 + 1);
+            return false;
+        }
+
         public void setVoxelShape(VoxelShape mutableobject1) {
             this.voxelShape = mutableobject1;
         }
@@ -290,16 +487,13 @@ public class VillageGenerator extends Generator {
                                 break;
                             }
 
-                            BPos size1 = VillageStructureSize.STRUCTURE_SIZE.get(jigsawpiece1);
-
-
-
-
                             for (BlockRotation rotation1 : BlockRotation.getShuffled(rand) ) {
                                 //10k passages
 
-                                //le retirer plus tard on s'en fou des villageois
+                                // Next block is setup to get the List<BlockJigsawInfo> (getJigsawBlocks in code)
+                                BPos size1 = VillageStructureSize.STRUCTURE_SIZE.get(jigsawpiece1);
                                 BlockBox box1;
+                                // This means we got a villager.
                                 if(size1 == null){
                                     box1 = new BlockBox(0,0,0,0,0,0);
                                 }
@@ -317,6 +511,8 @@ public class VillageGenerator extends Generator {
                                 }
 
                                 BlockDirection direction = blockJigsawInfo.getFront();
+
+                                // Loop to see if we can attach, written as hasJigsawMatch in code.
                                 for (BlockJigsawInfo blockJigsawInfo2 : list1) {//55k passages
                                     if (blockJigsawInfo.canAttach15(blockJigsawInfo2,direction)) {
                                         //5000 passages
@@ -360,7 +556,6 @@ public class VillageGenerator extends Generator {
                                             box3.maxY = box3.minY + k2;
                                         }
                                         if (isNotEmpty(mutableobject1,box3)) {
-                                            if(blockpos5.getY()<20)System.out.println(generator.getWorldSeed()+blockpos5.toString());
                                             mutableobject1.fullBoxes.add(new BlockBox(box3.minX,box3.minY,box3.minZ,
                                                     box3.maxX+1,box3.maxY+1,box3.maxZ+1));
                                             Piece piece2 = new Piece(jigsawpiece1,blockpos5,box3,rotation1,piece1.placementBehaviour,depth+1);
@@ -505,6 +700,13 @@ public class VillageGenerator extends Generator {
         }
     }
 
+    static enum PieceType{
+        Empty,
+        Feature,
+        List,
+        Single,
+        LegacySingle
+    }
 
 
 

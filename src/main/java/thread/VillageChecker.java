@@ -12,7 +12,6 @@ import kaptainwutax.mcutils.util.pos.BPos;
 import kaptainwutax.mcutils.util.pos.CPos;
 import kaptainwutax.mcutils.version.MCVersion;
 import kaptainwutax.terrainutils.TerrainGenerator;
-import properties.RuinedPortalProperties;
 import properties.VillageGenerator;
 
 import java.sql.SQLOutput;
@@ -45,11 +44,6 @@ public class VillageChecker implements Runnable{
                 //CPos shipPosition = ship.getInRegion(structureSeed, 0, 0 ,chunkRand);
 
 
-
-
-                RuinedPortalProperties ruinporp = new RuinedPortalProperties(structureSeed, ruinPosition);
-                List<ItemStack> coffre = ruinporp.getLoot(chunkRand, version);
-                if(!checkCoffre(coffre))continue;
                 //System.out.println("found structureseed : " + structureSeed + ", " + ruinPosition.toBlockPos());
 
                 CheckWorldSeed(structureSeed, villePos, chunkRand,villeGen);
