@@ -1,10 +1,21 @@
 plugins {
     id 'java'
     id 'application'
+    id 'maven-publish'
 }
+
+def ENV = System.getenv()
+
+archivesBaseName = 'profotoce59'
+group = 'profotoce59'
 version '1.0-SNAPSHOT'
+
+sourceCompatibility = JavaVersion.VERSION_16
+targetCompatibility = JavaVersion.VERSION_16
+
 allprojects {
     repositories {
+        mavenCentral()
         maven{
             url "https://jitpack.io"
         }
@@ -13,7 +24,7 @@ allprojects {
 }
 
 application{
-    mainClass = "Main"
+    mainClass = "profotoce59.Main"
 }
 
 dependencies {
@@ -27,7 +38,40 @@ dependencies {
     implementation('com.github.KaptainWutax:FeatureUtils:-SNAPSHOT') { transitive = false }
     implementation('com.github.KaptainWutax:ChunkRandomReversal:6b76fb5cf2cd438de56e6a46cea2a83985831834') { transitive = false }
 
+    testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
+    testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
 }
+
+test {
+    useJUnitPlatform()
+}
+
 java {
     withSourcesJar()
+}
+
+// configure the maven publication
+publishing {
+    publications {
+        maven(MavenPublication) {
+            artifactId = archivesBaseName
+            version = version
+            groupId = group
+
+            from components.java
+        }
+    }
+
+    // select the repositories you want to publish to
+    repositories {
+        if (ENV.MAVEN_URL) {
+            maven {
+                url ENV.MAVEN_URL
+                credentials {
+                    username ENV.MAVEN_USERNAME
+                    password ENV.MAVEN_PASSWORD
+                }
+            }
+        }
+    }
 }
