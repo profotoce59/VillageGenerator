@@ -203,6 +203,7 @@ public class VillageGenerator extends Generator {
         public String getName(){
             return this.name;
         }
+        //add a second constructor in order to avoid to use the method contains while we are not sure the piece will spawn (line 532)
         Piece(String name, BPos pos, BlockBox box, BlockRotation rotation, PlacementBehaviour placementBehaviour,int depth) {
             this.name = name;
             this.pos = pos;
@@ -408,7 +409,7 @@ public class VillageGenerator extends Generator {
 
         }
 
-        public BlockDirection getFront() {//il aime pas cette fonction
+        public BlockDirection getFront() {
             return rotation.rotate(this.nbt.getThird().getFirst());
         }
         public BlockDirection getOpposite(BlockDirection b){
