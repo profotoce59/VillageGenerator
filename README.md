@@ -4,7 +4,7 @@ Support for every type of village
 Versions supported for house locations: 1.14 1.15 1.16 1.17  
 Versions supported for loot: 1.16 1.17  
 I used Kaptain Wutax libraries and mojang code.   
-Thank to Solver3002 for his help.  
+Thank to Solver3002 and Jellejurre for their help.  
 Credit to Mojang and Kaptain Wutax and Neil for their librairies. I reused the start of their VillageGenerator.  
 
 
