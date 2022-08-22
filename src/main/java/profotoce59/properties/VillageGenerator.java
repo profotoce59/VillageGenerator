@@ -38,8 +38,14 @@ public class VillageGenerator extends Generator {
     private VillageType villageType;
     private boolean useHeightMapOptimizer = true;
     private boolean generated = false;
+    private boolean superflat = false;
     public VillageGenerator(MCVersion version) {
         super(version);
+    }
+
+    public VillageGenerator(MCVersion version, boolean superflat){
+        super(version);
+        this.superflat = superflat;
     }
     public boolean generate(TerrainGenerator generator, int chunkX, int chunkZ, ChunkRand rand,Biome biomeWanted,boolean useHeightMapOptimizer) {
         this.useHeightMapOptimizer = useHeightMapOptimizer;
@@ -59,7 +65,7 @@ public class VillageGenerator extends Generator {
     @Override
     public boolean generate(TerrainGenerator generator, int chunkX, int chunkZ, ChunkRand rand) {
         Biome biome = generator.getBiomeSource().getBiomeForNoiseGen((chunkX << 2) + 2, 0, (chunkZ << 2) + 2);
-        this.villageType = VillageType.getType(biome, generator.getVersion());
+        this.villageType = VillageType.getType(biome, generator.getVersion(), this.superflat);
         if(this.villageType == null)return false;
 
         pieces = new ArrayList<>();
@@ -69,11 +75,11 @@ public class VillageGenerator extends Generator {
             return false;
         }
 
-        if(!village.canSpawn(chunkX, chunkZ, generator.getBiomeSource())){
+        if(!superflat && !village.canSpawn(chunkX, chunkZ, generator.getBiomeSource())){
             return false;
         }
 
-        if(!village.canGenerate(chunkX, chunkZ, generator)){
+        if(!superflat && !village.canGenerate(chunkX, chunkZ, generator)){
             return false;
         }
 
@@ -156,12 +162,7 @@ public class VillageGenerator extends Generator {
                 confident = false;
             }
             if (piece.box.intersects(chunkBox)){
-//                System.out.println(chunkBox + ", " + piece.pos + ", " + rand.getSeed() + ", " + piece.name);
                 if(!piece.place(rand, generator, confident, chunkBox)){
-
-            // This is not what is done in minecraft code, but I'm going to remove every thing from the list after placing to avoid double generation
-//            if (piece.box.intersects(chunkBox)) {
-//                piece.place(rand, generator, confident);
                     iterator.remove();
                 }
             }

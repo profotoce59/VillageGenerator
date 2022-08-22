@@ -52,8 +52,15 @@ public enum VillageType {
     }
     };
 
-    public static VillageType getType(Biome biome, MCVersion version) {
+    public static VillageType getType(Biome biome, MCVersion version){
+        return getType(biome, version, false);
+    }
+
+    public static VillageType getType(Biome biome, MCVersion version, boolean superflat) {
         if(version.isOlderThan(MCVersion.v1_14)) return LEGACY;
+        if(biome.equals(Biomes.PLAINS) || superflat) {
+            return PLAINS;
+        }
         if(Biomes.DESERT.equals(biome)) {
             return DESERT;
         }
@@ -65,9 +72,6 @@ public enum VillageType {
         }
         if(Biomes.TAIGA.equals(biome)) {
             return TAIGA;
-        }
-        if(biome.equals(Biomes.PLAINS)) {
-            return PLAINS;
         }
         return null;
     }
