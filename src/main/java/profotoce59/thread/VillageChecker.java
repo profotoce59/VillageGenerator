@@ -1,21 +1,19 @@
 package profotoce59.thread;
 
-import kaptainwutax.biomeutils.biome.Biomes;
-import kaptainwutax.biomeutils.source.BiomeSource;
-import kaptainwutax.featureutils.loot.item.ItemStack;
-import kaptainwutax.featureutils.structure.RuinedPortal;
-import kaptainwutax.featureutils.structure.Village;
-
-import kaptainwutax.mcutils.rand.ChunkRand;
-import kaptainwutax.mcutils.state.Dimension;
-import kaptainwutax.mcutils.util.pos.BPos;
-import kaptainwutax.mcutils.util.pos.CPos;
-import kaptainwutax.mcutils.version.MCVersion;
-import kaptainwutax.terrainutils.TerrainGenerator;
-import profotoce59.properties.VillageGenerator;
-
+import com.seedfinding.mcbiome.biome.Biomes;
+import com.seedfinding.mcbiome.source.BiomeSource;
+import com.seedfinding.mccore.rand.ChunkRand;
+import com.seedfinding.mccore.state.Dimension;
+import com.seedfinding.mccore.util.pos.BPos;
+import com.seedfinding.mccore.util.pos.CPos;
+import com.seedfinding.mccore.version.MCVersion;
+import com.seedfinding.mcfeature.loot.item.ItemStack;
+import com.seedfinding.mcfeature.structure.RuinedPortal;
+import com.seedfinding.mcfeature.structure.Village;
+import com.seedfinding.mcterrain.TerrainGenerator;
 import java.util.List;
 import java.util.Random;
+import profotoce59.properties.VillageGenerator;
 
 public class VillageChecker implements Runnable{
         private final int offset;

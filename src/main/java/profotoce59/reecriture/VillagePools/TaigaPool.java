@@ -1,11 +1,12 @@
 package profotoce59.reecriture.VillagePools;
 
+import com.seedfinding.mccore.util.data.Pair;
+import com.seedfinding.mccore.util.data.Triplet;
+import java.util.Arrays;
+import java.util.EnumMap;
+import java.util.List;
 import profotoce59.enumType.PoolType;
-import kaptainwutax.mcutils.util.data.Pair;
-import kaptainwutax.mcutils.util.data.Triplet;
 import profotoce59.properties.VillageGenerator;
-
-import java.util.*;
 
 public interface TaigaPool {
     public static final EnumMap<PoolType, Triplet<PoolType, List<Pair<String, Integer>>, VillageGenerator.PlacementBehaviour>> VILLAGE_POOLS = new EnumMap<>(PoolType.class) {{

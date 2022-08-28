@@ -1,21 +1,29 @@
 package profotoce59.enumType;
 
-import kaptainwutax.biomeutils.biome.Biome;
-import kaptainwutax.biomeutils.biome.Biomes;
-import kaptainwutax.mcutils.block.Block;
-import kaptainwutax.mcutils.util.block.BlockDirection;
-import kaptainwutax.mcutils.util.data.Pair;
-import kaptainwutax.mcutils.util.data.Quad;
-import kaptainwutax.mcutils.util.data.Triplet;
-import kaptainwutax.mcutils.util.pos.BPos;
-import kaptainwutax.mcutils.util.pos.CPos;
-import kaptainwutax.mcutils.version.MCVersion;
-import profotoce59.properties.VillageGenerator;
-import profotoce59.reecriture.VillagePools.*;
-
+import com.seedfinding.mcbiome.biome.Biome;
+import com.seedfinding.mcbiome.biome.Biomes;
+import com.seedfinding.mccore.block.Block;
+import com.seedfinding.mccore.util.block.BlockDirection;
+import com.seedfinding.mccore.util.data.Pair;
+import com.seedfinding.mccore.util.data.Quad;
+import com.seedfinding.mccore.util.data.Triplet;
+import com.seedfinding.mccore.util.pos.BPos;
+import com.seedfinding.mccore.util.pos.CPos;
+import com.seedfinding.mccore.version.MCVersion;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
+import profotoce59.properties.VillageGenerator;
+import profotoce59.reecriture.VillagePools.DesertPool;
+import profotoce59.reecriture.VillagePools.DesertVillageJigsawBlocks;
+import profotoce59.reecriture.VillagePools.PlainPool;
+import profotoce59.reecriture.VillagePools.PlainsVillageJigsawBlock;
+import profotoce59.reecriture.VillagePools.SavannaPool;
+import profotoce59.reecriture.VillagePools.SavannaVillageJigsawBlocks;
+import profotoce59.reecriture.VillagePools.SnowyPool;
+import profotoce59.reecriture.VillagePools.SnowyVillageJigsawBlocks;
+import profotoce59.reecriture.VillagePools.TaigaPool;
+import profotoce59.reecriture.VillagePools.TaigaVillageJigsawBlocks;
 
 public enum VillageType {
     DESERT,

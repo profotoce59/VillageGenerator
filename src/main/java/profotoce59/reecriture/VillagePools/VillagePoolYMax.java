@@ -1,8 +1,7 @@
 package profotoce59.reecriture.VillagePools;
 
-import profotoce59.enumType.PoolType;
-
 import java.util.EnumMap;
+import profotoce59.enumType.PoolType;
 
 public class VillagePoolYMax {
     public static final EnumMap<PoolType, Integer> Y_MAX = new EnumMap<>(PoolType.class) {{

@@ -1,7 +1,7 @@
 package profotoce59.reecriture;
 
-import kaptainwutax.mcutils.util.block.BlockBox;
 
+import com.seedfinding.mccore.util.block.BlockBox;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;

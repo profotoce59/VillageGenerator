@@ -4,15 +4,15 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 
+import com.seedfinding.mcbiome.source.OverworldBiomeSource;
+import com.seedfinding.mccore.rand.ChunkRand;
+import com.seedfinding.mccore.util.data.Pair;
+import com.seedfinding.mccore.util.pos.BPos;
+import com.seedfinding.mccore.version.MCVersion;
+import com.seedfinding.mcfeature.loot.item.ItemStack;
+import com.seedfinding.mcfeature.loot.item.Items;
+import com.seedfinding.mcterrain.terrain.OverworldTerrainGenerator;
 import java.util.List;
-import kaptainwutax.biomeutils.source.OverworldBiomeSource;
-import kaptainwutax.featureutils.loot.item.ItemStack;
-import kaptainwutax.featureutils.loot.item.Items;
-import kaptainwutax.mcutils.rand.ChunkRand;
-import kaptainwutax.mcutils.util.data.Pair;
-import kaptainwutax.mcutils.util.pos.BPos;
-import kaptainwutax.mcutils.version.MCVersion;
-import kaptainwutax.terrainutils.terrain.OverworldTerrainGenerator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import profotoce59.properties.VillageGenerator;

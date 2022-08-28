@@ -1,7 +1,6 @@
 package profotoce59.reecriture.VillagePools;
 
-import kaptainwutax.mcutils.util.pos.BPos;
-
+import com.seedfinding.mccore.util.pos.BPos;
 import java.util.HashMap;
 
 public class VillageStructureSize {

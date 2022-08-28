@@ -1,36 +1,52 @@
 package profotoce59.properties;
 //1971160871
+
+import com.seedfinding.mcbiome.biome.Biome;
+import com.seedfinding.mccore.block.Block;
+import com.seedfinding.mccore.block.Blocks;
+import com.seedfinding.mccore.rand.ChunkRand;
+import com.seedfinding.mccore.util.block.BlockBox;
+import com.seedfinding.mccore.util.block.BlockDirection;
+import com.seedfinding.mccore.util.block.BlockMirror;
+import com.seedfinding.mccore.util.block.BlockRotation;
+import com.seedfinding.mccore.util.data.Pair;
+import com.seedfinding.mccore.util.data.Quad;
+import com.seedfinding.mccore.util.data.Triplet;
+import com.seedfinding.mccore.util.pos.BPos;
+import com.seedfinding.mccore.util.pos.CPos;
+import com.seedfinding.mccore.version.MCVersion;
+import com.seedfinding.mcfeature.loot.LootContext;
+import com.seedfinding.mcfeature.loot.LootTable;
+import com.seedfinding.mcfeature.loot.item.ItemStack;
+import com.seedfinding.mcfeature.structure.RegionStructure;
+import com.seedfinding.mcfeature.structure.Village;
+import com.seedfinding.mcfeature.structure.generator.Generator;
+import com.seedfinding.mcnoise.simplex.SimplexNoiseSampler;
+import com.seedfinding.mcseed.rand.JRand;
+import com.seedfinding.mcterrain.TerrainGenerator;
+import com.seedfinding.mcterrain.terrain.OverworldTerrainGenerator;
+import com.seedfinding.mcterrain.utils.NoiseSettings;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.Iterator;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
 import profotoce59.enumType.PoolType;
 import profotoce59.enumType.VillageType;
-import kaptainwutax.biomeutils.biome.Biome;
-import kaptainwutax.featureutils.loot.LootContext;
-import kaptainwutax.featureutils.loot.LootTable;
-import kaptainwutax.featureutils.loot.item.ItemStack;
-import kaptainwutax.featureutils.structure.RegionStructure;
-import kaptainwutax.featureutils.structure.Village;
-import kaptainwutax.featureutils.structure.generator.Generator;
-import kaptainwutax.mcutils.block.Block;
-import kaptainwutax.mcutils.block.Blocks;
-import kaptainwutax.mcutils.rand.ChunkRand;
-import kaptainwutax.mcutils.util.block.BlockBox;
-import kaptainwutax.mcutils.util.block.BlockDirection;
-import kaptainwutax.mcutils.util.block.BlockMirror;
-import kaptainwutax.mcutils.util.block.BlockRotation;
-import kaptainwutax.mcutils.util.data.Pair;
-import kaptainwutax.mcutils.util.data.Quad;
-import kaptainwutax.mcutils.util.data.Triplet;
-import kaptainwutax.mcutils.util.pos.BPos;
-import kaptainwutax.mcutils.util.pos.CPos;
-import kaptainwutax.mcutils.version.MCVersion;
-import kaptainwutax.noiseutils.simplex.SimplexNoiseSampler;
-import kaptainwutax.seedutils.rand.JRand;
-import kaptainwutax.terrainutils.TerrainGenerator;
-import kaptainwutax.terrainutils.terrain.OverworldTerrainGenerator;
-import kaptainwutax.terrainutils.utils.NoiseSettings;
-import profotoce59.reecriture.*;
-import profotoce59.reecriture.VillagePools.*;
-
-import java.util.*;
+import profotoce59.reecriture.SurfaceGenerator2;
+import profotoce59.reecriture.VillagePools.DesertPool;
+import profotoce59.reecriture.VillagePools.PlainPool;
+import profotoce59.reecriture.VillagePools.SavannaPool;
+import profotoce59.reecriture.VillagePools.SnowyPool;
+import profotoce59.reecriture.VillagePools.TaigaPool;
+import profotoce59.reecriture.VillagePools.VillagePoolYMax;
+import profotoce59.reecriture.VillagePools.VillageStructureLoot;
+import profotoce59.reecriture.VillagePools.VillageStructureSize;
+import profotoce59.reecriture.VoxelShape;
 import profotoce59.utils.Utils;
 
 public class VillageGenerator extends Generator {
@@ -47,7 +63,7 @@ public class VillageGenerator extends Generator {
         super(version);
         this.superflat = superflat;
     }
-    public boolean generate(TerrainGenerator generator, int chunkX, int chunkZ, ChunkRand rand,Biome biomeWanted,boolean useHeightMapOptimizer) {
+    public boolean generate(TerrainGenerator generator, int chunkX, int chunkZ, ChunkRand rand, Biome biomeWanted, boolean useHeightMapOptimizer) {
         this.useHeightMapOptimizer = useHeightMapOptimizer;
         Biome biome = generator.getBiomeSource().getBiomeForNoiseGen((chunkX << 2) + 2, 0, (chunkZ << 2) + 2);
         if(!biomeWanted.equals(biome))return false;

@@ -1,22 +1,24 @@
 package profotoce59.reecriture;
 
-import kaptainwutax.biomeutils.source.BiomeSource;
-import kaptainwutax.mcutils.block.Block;
-import kaptainwutax.mcutils.rand.ChunkRand;
-import kaptainwutax.mcutils.state.Dimension;
-import kaptainwutax.mcutils.version.MCVersion;
-import kaptainwutax.noiseutils.perlin.OctavePerlinNoiseSampler;
-import kaptainwutax.noiseutils.utils.MathHelper;
-import kaptainwutax.terrainutils.terrain.SurfaceGenerator;
-import kaptainwutax.terrainutils.utils.NoiseSettings;
 
+
+import static com.seedfinding.mcnoise.utils.MathHelper.maintainPrecision;
+import static com.seedfinding.mcterrain.utils.MathHelper.clampedLerp;
+
+
+import com.seedfinding.mcbiome.source.BiomeSource;
+import com.seedfinding.mccore.block.Block;
+import com.seedfinding.mccore.rand.ChunkRand;
+import com.seedfinding.mccore.state.Dimension;
+import com.seedfinding.mccore.version.MCVersion;
+import com.seedfinding.mcnoise.perlin.OctavePerlinNoiseSampler;
+import com.seedfinding.mcnoise.utils.MathHelper;
+import com.seedfinding.mcterrain.terrain.SurfaceGenerator;
+import com.seedfinding.mcterrain.utils.NoiseSettings;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Predicate;
 import java.util.stream.IntStream;
-
-import static kaptainwutax.noiseutils.utils.MathHelper.maintainPrecision;
-import static kaptainwutax.terrainutils.utils.MathHelper.clampedLerp;
 
 public class SurfaceGenerator2 extends SurfaceGenerator {
     private final int chunkHeight;
@@ -32,7 +34,7 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
     private final Map<Long, double[]> noiseColumnCache = new HashMap<>();
     private int startSizeY;
 
-    public SurfaceGenerator2(BiomeSource biomeSource, int worldHeight, int horizontalNoiseResolution, int verticalNoiseResolution, NoiseSettings noiseSettings, double densityFactor, double densityOffset, boolean useSimplexNoise,int startSizeY) {
+    public SurfaceGenerator2(BiomeSource biomeSource, int worldHeight, int horizontalNoiseResolution, int verticalNoiseResolution, NoiseSettings noiseSettings, double densityFactor, double densityOffset, boolean useSimplexNoise, int startSizeY) {
         super(biomeSource, worldHeight, horizontalNoiseResolution, verticalNoiseResolution, noiseSettings, densityFactor, densityOffset, useSimplexNoise);
         this.chunkHeight = verticalNoiseResolution * 4;
         this.chunkWidth = horizontalNoiseResolution * 4;

@@ -1,18 +1,18 @@
 //tp 17920 80 122560 because of height map
 
 package profotoce59.thread;
-import kaptainwutax.biomeutils.source.OverworldBiomeSource;
-import kaptainwutax.featureutils.structure.Village;
-import kaptainwutax.mcutils.rand.ChunkRand;
-import kaptainwutax.mcutils.state.Dimension;
-import kaptainwutax.mcutils.util.pos.CPos;
-import kaptainwutax.mcutils.version.MCVersion;
-import profotoce59.properties.VillageGenerator;
-import kaptainwutax.terrainutils.TerrainGenerator;
 
+import com.seedfinding.mcbiome.source.OverworldBiomeSource;
+import com.seedfinding.mccore.rand.ChunkRand;
+import com.seedfinding.mccore.state.Dimension;
+import com.seedfinding.mccore.util.pos.CPos;
+import com.seedfinding.mccore.version.MCVersion;
+import com.seedfinding.mcfeature.structure.Village;
+import com.seedfinding.mcterrain.TerrainGenerator;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
+import profotoce59.properties.VillageGenerator;
 
 public class testVillageGen implements Runnable{
         private final int offset;

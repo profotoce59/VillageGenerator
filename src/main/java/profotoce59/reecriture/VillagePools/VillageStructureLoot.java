@@ -1,10 +1,10 @@
 package profotoce59.reecriture.VillagePools;
 
+import com.seedfinding.mccore.util.pos.BPos;
+import com.seedfinding.mcfeature.loot.LootTable;
+import com.seedfinding.mcfeature.loot.MCLootTables;
 import java.util.HashMap;
 import java.util.List;
-import kaptainwutax.featureutils.loot.LootTable;
-import kaptainwutax.featureutils.loot.MCLootTables;
-import kaptainwutax.mcutils.util.pos.BPos;
 
 public class VillageStructureLoot {
     public static final HashMap<String, List<LootTable>> STRUCTURE_LOOT = new HashMap<>() {{
