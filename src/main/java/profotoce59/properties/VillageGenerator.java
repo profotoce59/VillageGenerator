@@ -1,5 +1,6 @@
 package profotoce59.properties;
 //1971160871
+import kaptainwutax.featureutils.loot.MCLootTables;
 import profotoce59.enumType.PoolType;
 import profotoce59.enumType.VillageType;
 import kaptainwutax.biomeutils.biome.Biome;
@@ -266,21 +267,27 @@ public class VillageGenerator extends Generator {
                     default -> throw new IllegalArgumentException("Unknown feature in village: " + name);
                 };
                 case LegacySingle -> {
-                    List<LootTable> table = VillageStructureLoot.STRUCTURE_LOOT.get(name);
-                    if(table==null){
+                    List<LootTable> tables = VillageStructureLoot.STRUCTURE_LOOT.get(name);
+                    if(tables==null){
                         throw new IllegalArgumentException("Unknown legacy single piece: " + name);
                     }
-                    if(table.isEmpty()){
+                    if(tables.isEmpty()){
                         yield true;
                     }
-                    BPos offset = VillageStructureLoot.STRUCTURE_LOOT_OFFSETS.get(name).get(0);
-                    if(boundingBox.contains(pos.add(getTransformedPos(offset, rotation)))) {
-                        long lootTableSeed = rand.nextLong();
-                        //If we have generated a feature this chunk, don't add the loot. We're not confident enough.
-                        if (confident) {
-                            table.get(0).apply(otg.getVersion());
-                            loot.addAll(table.get(0)
-                                .generate(new LootContext(lootTableSeed, otg.getVersion())));
+                    for (int i = 0; i < tables.size(); i++) {
+                        BPos offset = VillageStructureLoot.STRUCTURE_LOOT_OFFSETS.get(name).get(i);
+                        if(boundingBox.contains(pos.add(getTransformedPos(offset, rotation)))) {
+                            long lootTableSeed = rand.nextLong();
+                            //If we have generated a feature this chunk, don't add the loot. We're not confident enough.
+                            if (confident) {
+                                //Generate the loot only if we're not talking about barrels
+                                if(tables.get(i)!= MCLootTables.NULL) {
+                                    tables.get(i).apply(otg.getVersion());
+                                    loot.addAll(tables.get(i)
+                                        .generate(
+                                            new LootContext(lootTableSeed, otg.getVersion())));
+                                }
+                            }
                         }
                     }
                     yield true;
