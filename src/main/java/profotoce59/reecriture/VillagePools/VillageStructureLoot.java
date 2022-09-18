@@ -40,7 +40,7 @@ public class VillageStructureLoot {
         this.put("desert/houses/desert_cartographer_house_1", List.of());
         this.put("desert/houses/desert_farm_1", List.of());
         this.put("desert/houses/desert_farm_2", List.of());
-        this.put("desert/houses/desert_fisher_1", List.of());
+        this.put("desert/houses/desert_fisher_1", List.of(MCLootTables.NULL, MCLootTables.NULL, MCLootTables.NULL, MCLootTables.NULL, MCLootTables.NULL, MCLootTables.NULL));
         this.put("desert/houses/desert_fletcher_house_1", List.of());
         this.put("desert/houses/desert_large_farm_1", List.of());
         this.put("desert/houses/desert_library_1", List.of());
@@ -117,7 +117,7 @@ public class VillageStructureLoot {
         this.put("plains/houses/plains_butcher_shop_1", List.of());
         this.put("plains/houses/plains_butcher_shop_2", List.of());
         this.put("plains/houses/plains_cartographer_1", List.of(MCLootTables.VILLAGE_CARTOGRAPHER_CHEST));
-        this.put("plains/houses/plains_fisher_cottage_1", List.of(MCLootTables.VILLAGE_FISHER_CHEST));
+        this.put("plains/houses/plains_fisher_cottage_1", List.of(MCLootTables.NULL, MCLootTables.NULL, MCLootTables.VILLAGE_FISHER_CHEST));
         this.put("plains/houses/plains_fletcher_house_1", List.of());
         this.put("plains/houses/plains_large_farm_1", List.of());
         this.put("plains/houses/plains_library_1", List.of());
@@ -219,7 +219,7 @@ public class VillageStructureLoot {
         this.put("savanna/houses/savanna_butchers_shop_1", List.of());
         this.put("savanna/houses/savanna_butchers_shop_2", List.of(MCLootTables.VILLAGE_BUTCHER_CHEST));
         this.put("savanna/houses/savanna_cartographer_1", List.of(MCLootTables.VILLAGE_CARTOGRAPHER_CHEST));
-        this.put("savanna/houses/savanna_fisher_cottage_1", List.of());
+        this.put("savanna/houses/savanna_fisher_cottage_1", List.of(MCLootTables.NULL, MCLootTables.NULL, MCLootTables.NULL));
         this.put("savanna/houses/savanna_fletcher_house_1", List.of());
         this.put("savanna/houses/savanna_large_farm_1", List.of());
         this.put("savanna/houses/savanna_large_farm_2", List.of());
@@ -321,7 +321,7 @@ public class VillageStructureLoot {
         this.put("snowy/houses/snowy_cartographer_house_1", List.of(MCLootTables.VILLAGE_CARTOGRAPHER_CHEST));
         this.put("snowy/houses/snowy_farm_1", List.of());
         this.put("snowy/houses/snowy_farm_2", List.of());
-        this.put("snowy/houses/snowy_fisher_cottage", List.of());
+        this.put("snowy/houses/snowy_fisher_cottage", List.of(MCLootTables.NULL, MCLootTables.NULL, MCLootTables.NULL));
         this.put("snowy/houses/snowy_fletcher_house_1", List.of());
         this.put("snowy/houses/snowy_library_1", List.of());
         this.put("snowy/houses/snowy_masons_house_1", List.of());
@@ -410,7 +410,7 @@ public class VillageStructureLoot {
         this.put("taiga/houses/taiga_armorer_house_1", List.of());
         this.put("taiga/houses/taiga_butcher_shop_1", List.of());
         this.put("taiga/houses/taiga_cartographer_house_1", List.of(MCLootTables.VILLAGE_CARTOGRAPHER_CHEST));
-        this.put("taiga/houses/taiga_fisher_cottage_1", List.of());
+        this.put("taiga/houses/taiga_fisher_cottage_1", List.of(MCLootTables.NULL, MCLootTables.NULL));
         this.put("taiga/houses/taiga_fletcher_house_1", List.of(MCLootTables.VILLAGE_FLETCHER_CHEST));
         this.put("taiga/houses/taiga_large_farm_1", List.of());
         this.put("taiga/houses/taiga_large_farm_2", List.of());
@@ -454,7 +454,7 @@ public class VillageStructureLoot {
         this.put("taiga/villagers/nitwit", List.of());
         this.put("taiga/villagers/unemployed", List.of());
         this.put("taiga/zombie/houses/taiga_cartographer_house_1", List.of(MCLootTables.VILLAGE_CARTOGRAPHER_CHEST));
-        this.put("taiga/zombie/houses/taiga_fisher_cottage_1", List.of());
+        this.put("taiga/zombie/houses/taiga_fisher_cottage_1", List.of(MCLootTables.NULL, MCLootTables.NULL));
         this.put("taiga/zombie/houses/taiga_large_farm_2", List.of());
         this.put("taiga/zombie/houses/taiga_library_1", List.of());
         this.put("taiga/zombie/houses/taiga_medium_house_1", List.of(MCLootTables.VILLAGE_TAIGA_HOUSE_CHEST));
@@ -525,7 +525,7 @@ public class VillageStructureLoot {
         this.put("desert/houses/desert_cartographer_house_1", List.of());
         this.put("desert/houses/desert_farm_1", List.of());
         this.put("desert/houses/desert_farm_2", List.of());
-        this.put("desert/houses/desert_fisher_1", List.of());
+        this.put("desert/houses/desert_fisher_1", List.of(new BPos(2, 1, 5), new BPos(5, 1, 8), new BPos(6, 1, 4), new BPos(6, 1, 8), new BPos(2, 2, 5), new BPos(6, 2, 8)));
         this.put("desert/houses/desert_fletcher_house_1", List.of());
         this.put("desert/houses/desert_large_farm_1", List.of());
         this.put("desert/houses/desert_library_1", List.of());
@@ -602,7 +602,7 @@ public class VillageStructureLoot {
         this.put("plains/houses/plains_butcher_shop_1", List.of());
         this.put("plains/houses/plains_butcher_shop_2", List.of());
         this.put("plains/houses/plains_cartographer_1", List.of(new BPos(3, 1, 4)));
-        this.put("plains/houses/plains_fisher_cottage_1", List.of(new BPos(4, 3, 6)));
+        this.put("plains/houses/plains_fisher_cottage_1", List.of(new BPos(2, 2, 2), new BPos(9, 2, 7), new BPos(4, 3, 6)));
         this.put("plains/houses/plains_fletcher_house_1", List.of());
         this.put("plains/houses/plains_large_farm_1", List.of());
         this.put("plains/houses/plains_library_1", List.of());
@@ -704,7 +704,7 @@ public class VillageStructureLoot {
         this.put("savanna/houses/savanna_butchers_shop_1", List.of());
         this.put("savanna/houses/savanna_butchers_shop_2", List.of(new BPos(6, 4, 5)));
         this.put("savanna/houses/savanna_cartographer_1", List.of(new BPos(4, 3, 6)));
-        this.put("savanna/houses/savanna_fisher_cottage_1", List.of());
+        this.put("savanna/houses/savanna_fisher_cottage_1", List.of(new BPos(2, 2, 4), new BPos(6, 2, 2), new BPos(2, 3, 4)));
         this.put("savanna/houses/savanna_fletcher_house_1", List.of());
         this.put("savanna/houses/savanna_large_farm_1", List.of());
         this.put("savanna/houses/savanna_large_farm_2", List.of());
@@ -806,7 +806,7 @@ public class VillageStructureLoot {
         this.put("snowy/houses/snowy_cartographer_house_1", List.of(new BPos(2, 1, 3)));
         this.put("snowy/houses/snowy_farm_1", List.of());
         this.put("snowy/houses/snowy_farm_2", List.of());
-        this.put("snowy/houses/snowy_fisher_cottage", List.of());
+        this.put("snowy/houses/snowy_fisher_cottage", List.of(new BPos(5, 2, 2), new BPos(6, 2, 2), new BPos(6, 3, 2)));
         this.put("snowy/houses/snowy_fletcher_house_1", List.of());
         this.put("snowy/houses/snowy_library_1", List.of());
         this.put("snowy/houses/snowy_masons_house_1", List.of());
@@ -895,7 +895,7 @@ public class VillageStructureLoot {
         this.put("taiga/houses/taiga_armorer_house_1", List.of());
         this.put("taiga/houses/taiga_butcher_shop_1", List.of());
         this.put("taiga/houses/taiga_cartographer_house_1", List.of(new BPos(2, 4, 3)));
-        this.put("taiga/houses/taiga_fisher_cottage_1", List.of());
+        this.put("taiga/houses/taiga_fisher_cottage_1", List.of(new BPos(8, 2, 1), new BPos(9, 2, 4)));
         this.put("taiga/houses/taiga_fletcher_house_1", List.of(new BPos(5, 1, 4)));
         this.put("taiga/houses/taiga_large_farm_1", List.of());
         this.put("taiga/houses/taiga_large_farm_2", List.of());
@@ -939,7 +939,7 @@ public class VillageStructureLoot {
         this.put("taiga/villagers/nitwit", List.of());
         this.put("taiga/villagers/unemployed", List.of());
         this.put("taiga/zombie/houses/taiga_cartographer_house_1", List.of(new BPos(2, 4, 1)));
-        this.put("taiga/zombie/houses/taiga_fisher_cottage_1", List.of());
+        this.put("taiga/zombie/houses/taiga_fisher_cottage_1", List.of(new BPos(8, 2, 1), new BPos(9, 2, 4)));
         this.put("taiga/zombie/houses/taiga_large_farm_2", List.of());
         this.put("taiga/zombie/houses/taiga_library_1", List.of());
         this.put("taiga/zombie/houses/taiga_medium_house_1", List.of(new BPos(2, 0, 2)));
