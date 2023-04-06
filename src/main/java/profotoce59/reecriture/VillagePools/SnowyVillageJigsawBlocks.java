@@ -1,12 +1,12 @@
 package profotoce59.reecriture.VillagePools;
 
 import profotoce59.enumType.PoolType;
-import kaptainwutax.mcutils.block.Block;
-import kaptainwutax.mcutils.block.Blocks;
-import kaptainwutax.mcutils.util.block.BlockDirection;
-import kaptainwutax.mcutils.util.data.Pair;
-import kaptainwutax.mcutils.util.data.Quad;
-import kaptainwutax.mcutils.util.pos.BPos;
+import com.seedfinding.mccore.block.Block;
+import com.seedfinding.mccore.block.Blocks;
+import com.seedfinding.mccore.util.block.BlockDirection;
+import com.seedfinding.mccore.util.data.Pair;
+import com.seedfinding.mccore.util.data.Quad;
+import com.seedfinding.mccore.util.pos.BPos;
 
 import java.util.Arrays;
 import java.util.Collections;

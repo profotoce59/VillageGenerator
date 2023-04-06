@@ -1,15 +1,16 @@
 package profotoce59.thread;
 
-import kaptainwutax.biomeutils.biome.Biomes;
-import kaptainwutax.biomeutils.source.OverworldBiomeSource;
-import kaptainwutax.featureutils.loot.item.ItemStack;
-import kaptainwutax.featureutils.structure.Village;
-import kaptainwutax.mcutils.rand.ChunkRand;
-import kaptainwutax.mcutils.state.Dimension;
-import kaptainwutax.mcutils.util.pos.BPos;
-import kaptainwutax.mcutils.util.pos.CPos;
-import kaptainwutax.mcutils.version.MCVersion;
-import kaptainwutax.terrainutils.TerrainGenerator;
+
+import com.seedfinding.mcbiome.biome.Biomes;
+import com.seedfinding.mcbiome.source.OverworldBiomeSource;
+import com.seedfinding.mccore.rand.ChunkRand;
+import com.seedfinding.mccore.state.Dimension;
+import com.seedfinding.mccore.util.pos.BPos;
+import com.seedfinding.mccore.util.pos.CPos;
+import com.seedfinding.mccore.version.MCVersion;
+import com.seedfinding.mcfeature.loot.item.ItemStack;
+import com.seedfinding.mcfeature.structure.Village;
+import com.seedfinding.mcterrain.TerrainGenerator;
 import profotoce59.properties.VillageGenerator;
 
 import java.util.List;
@@ -104,7 +105,7 @@ public class WorldSeedThread implements Runnable{
             }
 
         }
-        public double calculDistance(BPos spawn,CPos place) {
+        public double calculDistance(BPos spawn, CPos place) {
             int x = (place.getX()<<4) - (spawn.getX());
             int z = (place.getZ()<<4) - (spawn.getZ());
             return Math.sqrt(Math.pow(x,2)+Math.pow(z,2));
