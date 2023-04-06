@@ -19,7 +19,12 @@ allprojects {
         maven{
             url "https://jitpack.io"
         }
-
+        maven {
+            url "https://maven.seedfinding.com/"
+        }
+        maven {
+            url "https://maven-snapshots.seedfinding.com/"
+        }
     }
 }
 
@@ -28,7 +33,15 @@ application{
 }
 
 dependencies {
-    implementation ('com.github.hube12:SEED:master-SNAPSHOT')
+    implementation('com.seedfinding:mc_math:1.171.0') { transitive = false }
+    implementation('com.seedfinding:mc_seed:1.171.2') { transitive = false }
+    implementation('com.seedfinding:mc_core:1.194.0') { transitive = false }
+    implementation('com.seedfinding:mc_noise:1.171.1') { transitive = false }
+
+    implementation('com.seedfinding:mc_biome:1.171.1') { transitive = false }
+    implementation('com.seedfinding:mc_terrain:1.171.1') { transitive = false }
+    implementation('com.seedfinding:mc_feature:1.171.5') { transitive = false }
+    implementation('com.seedfinding:mc_reversal:1.171.1') { transitive = false }
 
     testImplementation 'org.junit.jupiter:junit-jupiter-api:5.8.1'
     testRuntimeOnly 'org.junit.jupiter:junit-jupiter-engine:5.8.1'
