@@ -1,8 +1,8 @@
 package profotoce59.reecriture.VillagePools;
 
+import com.seedfinding.mccore.util.data.Pair;
+import com.seedfinding.mccore.util.data.Triplet;
 import profotoce59.enumType.PoolType;
-import kaptainwutax.mcutils.util.data.Pair;
-import kaptainwutax.mcutils.util.data.Triplet;
 import profotoce59.properties.VillageGenerator;
 
 import java.util.Arrays;

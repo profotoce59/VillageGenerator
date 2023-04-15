@@ -1,9 +1,10 @@
 package profotoce59.utils;
 
+import com.seedfinding.mccore.util.pos.BPos;
+
 import java.util.Iterator;
 import java.util.Spliterator;
 import java.util.function.Consumer;
-import kaptainwutax.mcutils.util.pos.BPos;
 
 public class Utils {
 

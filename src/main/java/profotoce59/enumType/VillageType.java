@@ -1,15 +1,15 @@
 package profotoce59.enumType;
 
-import kaptainwutax.biomeutils.biome.Biome;
-import kaptainwutax.biomeutils.biome.Biomes;
-import kaptainwutax.mcutils.block.Block;
-import kaptainwutax.mcutils.util.block.BlockDirection;
-import kaptainwutax.mcutils.util.data.Pair;
-import kaptainwutax.mcutils.util.data.Quad;
-import kaptainwutax.mcutils.util.data.Triplet;
-import kaptainwutax.mcutils.util.pos.BPos;
-import kaptainwutax.mcutils.util.pos.CPos;
-import kaptainwutax.mcutils.version.MCVersion;
+import com.seedfinding.mcbiome.biome.Biome;
+import com.seedfinding.mcbiome.biome.Biomes;
+import com.seedfinding.mccore.block.Block;
+import com.seedfinding.mccore.util.block.BlockDirection;
+import com.seedfinding.mccore.util.data.Pair;
+import com.seedfinding.mccore.util.data.Quad;
+import com.seedfinding.mccore.util.data.Triplet;
+import com.seedfinding.mccore.util.pos.BPos;
+import com.seedfinding.mccore.util.pos.CPos;
+import com.seedfinding.mccore.version.MCVersion;
 import profotoce59.properties.VillageGenerator;
 import profotoce59.reecriture.VillagePools.*;
 

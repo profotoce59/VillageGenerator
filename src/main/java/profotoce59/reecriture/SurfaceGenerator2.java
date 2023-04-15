@@ -1,22 +1,22 @@
 package profotoce59.reecriture;
 
-import kaptainwutax.biomeutils.source.BiomeSource;
-import kaptainwutax.mcutils.block.Block;
-import kaptainwutax.mcutils.rand.ChunkRand;
-import kaptainwutax.mcutils.state.Dimension;
-import kaptainwutax.mcutils.version.MCVersion;
-import kaptainwutax.noiseutils.perlin.OctavePerlinNoiseSampler;
-import kaptainwutax.noiseutils.utils.MathHelper;
-import kaptainwutax.terrainutils.terrain.SurfaceGenerator;
-import kaptainwutax.terrainutils.utils.NoiseSettings;
+import com.seedfinding.mcbiome.source.BiomeSource;
+import com.seedfinding.mccore.block.Block;
+import com.seedfinding.mccore.rand.ChunkRand;
+import com.seedfinding.mccore.state.Dimension;
+import com.seedfinding.mccore.version.MCVersion;
+import com.seedfinding.mcnoise.perlin.OctavePerlinNoiseSampler;
+import com.seedfinding.mcterrain.terrain.SurfaceGenerator;
+import com.seedfinding.mcterrain.utils.MathHelper;
+import com.seedfinding.mcterrain.utils.NoiseSettings;
 
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Predicate;
 import java.util.stream.IntStream;
 
-import static kaptainwutax.noiseutils.utils.MathHelper.maintainPrecision;
-import static kaptainwutax.terrainutils.utils.MathHelper.clampedLerp;
+import static com.seedfinding.mcnoise.utils.MathHelper.lerp3;
+import static com.seedfinding.mcnoise.utils.MathHelper.maintainPrecision;
 
 public class SurfaceGenerator2 extends SurfaceGenerator {
     private final int chunkHeight;
@@ -32,7 +32,7 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
     private final Map<Long, double[]> noiseColumnCache = new HashMap<>();
     private int startSizeY;
 
-    public SurfaceGenerator2(BiomeSource biomeSource, int worldHeight, int horizontalNoiseResolution, int verticalNoiseResolution, NoiseSettings noiseSettings, double densityFactor, double densityOffset, boolean useSimplexNoise,int startSizeY) {
+    public SurfaceGenerator2(BiomeSource biomeSource, int worldHeight, int horizontalNoiseResolution, int verticalNoiseResolution, NoiseSettings noiseSettings, double densityFactor, double densityOffset, boolean useSimplexNoise, int startSizeY) {
         super(biomeSource, worldHeight, horizontalNoiseResolution, verticalNoiseResolution, noiseSettings, densityFactor, densityOffset, useSimplexNoise);
         this.chunkHeight = verticalNoiseResolution * 4;
         this.chunkWidth = horizontalNoiseResolution * 4;
@@ -116,7 +116,7 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
             for(int posY = this.chunkHeight - 1; posY >= 0; --posY) {
                 double percentY = (double)posY / (double)this.chunkHeight;
                 // this is not a bug, mojang does not respect order
-                double noise = MathHelper.lerp3(percentY, percentX, percentZ, xyz, xy1z, x1yz, x1y1z, xyz1, xy1z1, x1yz1, x1y1z1);
+                double noise = lerp3(percentY, percentX, percentZ, xyz, xy1z, x1yz, x1y1z, xyz1, xy1z1, x1yz1, x1y1z1);
                 int y = cellY * this.chunkHeight + posY;
                 Block block = this.getBlockFromNoise(noise, y);
                 // we assume you actually have correctly filled the buffer
@@ -149,17 +149,17 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
                 fallOff = (fallOff + depth) * scale;
                 noise = fallOff > 0.0 ? noise + fallOff * 4.0D : noise + fallOff;
                 if(this.noiseSettings.topSlideSettings.size > 0.0D) {
-                    noise = clampedLerp(this.noiseSettings.topSlideSettings.target, noise, ((double)(this.noiseSizeY - y) - this.noiseSettings.topSlideSettings.offset) / this.noiseSettings.topSlideSettings.size);
+                    noise = MathHelper.clampedLerp(this.noiseSettings.topSlideSettings.target, noise, ((double)(this.noiseSizeY - y) - this.noiseSettings.topSlideSettings.offset) / this.noiseSettings.topSlideSettings.size);
                 }
                 if(this.noiseSettings.bottomSlideSettings.size > 0.0D) {
-                    noise = clampedLerp(this.noiseSettings.bottomSlideSettings.target, noise, ((double)y - this.noiseSettings.bottomSlideSettings.offset) / this.noiseSettings.bottomSlideSettings.size);
+                    noise = MathHelper.clampedLerp(this.noiseSettings.bottomSlideSettings.target, noise, ((double)y - this.noiseSettings.bottomSlideSettings.offset) / this.noiseSettings.bottomSlideSettings.size);
                 }
             } else {
                 noise -= this.computeNoiseFalloff(depth, scale, y);
                 if((double)y > sizeY) {
-                    noise = clampedLerp(noise, this.noiseSettings.topSlideSettings.target, (y - sizeY - this.noiseSettings.topSlideSettings.offset) / (double)this.noiseSettings.topSlideSettings.size);
+                    noise = MathHelper.clampedLerp(noise, this.noiseSettings.topSlideSettings.target, (y - sizeY - this.noiseSettings.topSlideSettings.offset) / (double)this.noiseSettings.topSlideSettings.size);
                 } else if((double)y < minY) {
-                    noise = clampedLerp(noise, this.noiseSettings.bottomSlideSettings.target, (minY - (double)y) / (minY - 1.0D));
+                    noise = MathHelper.clampedLerp(noise, this.noiseSettings.bottomSlideSettings.target, (minY - (double)y) / (minY - 1.0D));
                 }
             }
             buffer[y] = noise;
@@ -194,7 +194,7 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
             persistence /= 2.0D;
         }
 
-        return clampedLerp(minNoise / NoiseSettings.NOISE_SCALE, maxNoise / NoiseSettings.NOISE_SCALE, (mainNoise / 10.0D + 1.0D) / 2.0D);
+        return MathHelper.clampedLerp(minNoise / NoiseSettings.NOISE_SCALE, maxNoise / NoiseSettings.NOISE_SCALE, (mainNoise / 10.0D + 1.0D) / 2.0D);
     }
     private double sampleNoise(int x, int z) {
         double noise = this.depthNoise.sample(x * 200, 10.0D, z * 200, 1.0D, 0.0D, true);
