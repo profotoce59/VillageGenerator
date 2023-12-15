@@ -20,10 +20,10 @@ allprojects {
             url "https://jitpack.io"
         }
         maven {
-            url "https://maven.seedfinding.com/"
+            url "https://nexus.seedfinding.com/repository/maven-seedfinding"
         }
         maven {
-            url "https://maven-snapshots.seedfinding.com/"
+            url "https://nexus.seedfinding.com/repository/maven-seedfinding-snapshots"
         }
     }
 }
