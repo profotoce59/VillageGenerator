@@ -55,7 +55,7 @@ run: $(TARGET)
 	./$(TARGET)
 
 # Cible pour l'exemple d'intégration cubiomes
-example: example_cubiomes_surface
+example_height: example_cubiomes_surface
 	./example_cubiomes_surface
 
 example_cubiomes_surface: example_cubiomes_surface.c surface_gen.c cubiomes_integration.c $(LIBCUBIOMES)

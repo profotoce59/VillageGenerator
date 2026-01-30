@@ -1,6 +1,18 @@
 #include "cubiomes_integration.h"
 #include "biomes.h"  // Pour DIM_OVERWORLD, DIM_NETHER, DIM_END
+#include "noise.h"   // Pour samplePerlin
 #include <math.h>
+#include <stdio.h>   // Pour printf (debug)
+
+// Table de poids pour la moyenne pondérée des biomes (Minecraft 1.16)
+// Grille 5x5 centrée sur le biome principal
+static const float BIOME_WEIGHT_TABLE[25] = {
+    0.1f, 0.2f, 0.4f, 0.2f, 0.1f,
+    0.2f, 0.4f, 0.8f, 0.4f, 0.2f,
+    0.4f, 0.8f, 1.0f, 0.8f, 0.4f,
+    0.2f, 0.4f, 0.8f, 0.4f, 0.2f,
+    0.1f, 0.2f, 0.4f, 0.2f, 0.1f
+};
 
 // Initialise un contexte cubiomes
 void init_cubiomes_context(CubiomesContext *ctx, int mc_version, uint64_t seed) {
@@ -17,24 +29,25 @@ void init_cubiomes_context(CubiomesContext *ctx, int mc_version, uint64_t seed) 
 
 // Configuration complète de SurfaceGen avec cubiomes
 void setup_surface_gen_with_cubiomes(SurfaceGen *sg, CubiomesContext *ctx) {
-    // Configuration typique pour Minecraft 1.16
-    sg->chunkWidth   = 4;
-    sg->chunkHeight  = 8;
-    sg->startSizeY   = 33;
-    sg->noiseSizeY   = 32;
+    // Configuration identique au test Java (testVillageGen.java)
+    // horizontalNoiseResolution = 1, verticalNoiseResolution = 2, worldHeight = 256, startSizeY = 105
+    sg->chunkWidth   = 4;   // horizontalNoiseResolution * 4 = 1 * 4
+    sg->chunkHeight  = 8;   // verticalNoiseResolution * 4 = 2 * 4
+    sg->startSizeY   = 13;  // Math.round(105 / 8) = 13
+    sg->noiseSizeY   = 32;  // worldHeight / chunkHeight = 256 / 8
     sg->seaLevel     = 63;
     sg->densityFactor= 1.0;
     sg->densityOffset= -0.46875;
     sg->dim          = DIM_OVERWORLD;
 
-    // Slides (valeurs par défaut pour Overworld)
-    sg->noiseSettings.topSlideSettings.target  = -3000.0;
-    sg->noiseSettings.topSlideSettings.size    = 64.0;
-    sg->noiseSettings.topSlideSettings.offset  = -46.0;
+    // Slides identiques au Java : topSlide(-10, 3, 0), bottomSlide(-30, 0, 0)
+    sg->noiseSettings.topSlideSettings.target  = -10.0;
+    sg->noiseSettings.topSlideSettings.size    = 3.0;
+    sg->noiseSettings.topSlideSettings.offset  = 0.0;
 
     sg->noiseSettings.bottomSlideSettings.target = -30.0;
-    sg->noiseSettings.bottomSlideSettings.size   = 7.0;
-    sg->noiseSettings.bottomSlideSettings.offset = 1.0;
+    sg->noiseSettings.bottomSlideSettings.size   = 0.0;
+    sg->noiseSettings.bottomSlideSettings.offset = 0.0;
 
     // Connecter les hooks cubiomes
     sg->get_depth_and_scale = cubiomes_get_depth_and_scale;
@@ -44,16 +57,60 @@ void setup_surface_gen_with_cubiomes(SurfaceGen *sg, CubiomesContext *ctx) {
 }
 
 // Hook : récupère depth et scale depuis un biome cubiomes
+// Implémente la moyenne pondérée des biomes environnants comme Minecraft 1.16+
 void cubiomes_get_depth_and_scale(int x, int z, double out2[2], void *user) {
     CubiomesContext *ctx = (CubiomesContext*)user;
 
-    // Obtenir le biome à cette position (échelle 1:4)
-    int biomeId = getBiomeAt(&ctx->gen, 4, x, 0, z);
+    const int sampleRange = 2;
+    double weightedScale = 0.0;
+    double weightedDepth = 0.0;
+    double totalWeight = 0.0;
 
-    // Obtenir depth et scale pour ce biome
-    // Le dernier paramètre (grass) n'est pas utilisé ici
-    int grass = 0;
-    getBiomeDepthAndScale(biomeId, &out2[0], &out2[1], &grass);
+    // Obtenir le biome central
+    int centerBiomeId = getBiomeAt(&ctx->gen, 4, x, 0, z);
+    double centerDepth, centerScale;
+    int grass;
+    getBiomeDepthAndScale(centerBiomeId, &centerDepth, &centerScale, &grass);
+
+    // Parcourir les biomes environnants dans un rayon de 2
+    for (int rx = -sampleRange; rx <= sampleRange; ++rx) {
+        for (int rz = -sampleRange; rz <= sampleRange; ++rz) {
+            // Obtenir le biome à cette position relative
+            int biomeId = getBiomeAt(&ctx->gen, 4, x + rx, 0, z + rz);
+            double depth, scale;
+            getBiomeDepthAndScale(biomeId, &depth, &scale, &grass);
+
+            // Appliquer l'amplification si nécessaire (pas pour ce test, mais gardons la logique)
+            // if (amplified && depth > 0.0) {
+            //     depth = 1.0 + depth * 2.0;
+            //     scale = 1.0 + scale * 4.0;
+            // }
+
+            // Calculer le poids depuis la table
+            float weight = BIOME_WEIGHT_TABLE[(rx + 2) + (rz + 2) * 5] / (depth + 2.0);
+
+            // Réduire le poids si le biome est plus élevé que le centre
+            if (depth > centerDepth) {
+                weight /= 2.0;
+            }
+
+            weightedScale += scale * weight;
+            weightedDepth += depth * weight;
+            totalWeight += weight;
+        }
+    }
+
+    // Calculer les moyennes
+    weightedDepth /= totalWeight;
+    weightedScale /= totalWeight;
+
+    // Transformations finales (comme dans Minecraft 1.16+)
+    weightedScale = weightedScale * 0.9 + 0.1;
+    weightedDepth = (weightedDepth * 4.0 - 1.0) / 8.0;
+
+    // Pour MC 1.16+ : appliquer les transformations spécifiques
+    out2[0] = weightedDepth * 17.0 / 64.0;  // depth
+    out2[1] = 96.0 / weightedScale;          // scale
 }
 
 // Hook : échantillonne le bruit 3D de cubiomes
@@ -65,10 +122,44 @@ double cubiomes_noise_3d(int x, int y, int z, void *user) {
 }
 
 // Hook : échantillonne le bruit 2D pour randomOffset (Overworld)
+// Implémente le calcul du depthNoise comme Minecraft 1.16+
 double cubiomes_noise_2d(int x, int z, void *user) {
     CubiomesContext *ctx = (CubiomesContext*)user;
 
-    // Pour le randomOffset, on utilise le bruit de surface à y=0
-    // Échelle réduite pour avoir un effet plus subtil
-    return sampleSurfaceNoise(&ctx->sn, x, 0, z) * 0.1;
+    // Le Java fait: depthNoise.sample(x * 200, 10.0, z * 200, 1.0, 0.0, true)
+    // En cubiomes, on utilise sampleOctaveAmp sur octdepth
+    double noise = sampleOctaveAmp(&ctx->sn.octdepth,
+                                   (double)(x * 200),
+                                   10.0,
+                                   (double)(z * 200),
+                                   1.0,  // yamp
+                                   0.0,  // ymin
+                                   1);   // ydefault (true)
+
+    // DEBUG: afficher le bruit brut
+    if (x == 0 && z == 0) {
+        printf("DEBUG cubiomes_noise_2d(0,0): noise_brut=%.16f\n", noise);
+    }
+
+    // Ajustement du signe (ligne 253 du Java)
+    noise = noise < 0.0 ? -noise * 0.3 : noise;
+
+    // DEBUG: afficher après ajustement signe
+    if (x == 0 && z == 0) {
+        printf("DEBUG après ajustement signe=%.16f\n", noise);
+    }
+
+    // Traitement pour 1.16+ (ligne 255 du Java)
+    noise = noise * 3.0 * 65535.0 / 8000.0 - 2.0;
+
+    // DEBUG: afficher après transformation
+    if (x == 0 && z == 0) {
+        printf("DEBUG cubiomes_noise_2d(0,0): après transfo=%.16f\n", noise);
+    }
+
+    if (noise < 0.0) {
+        return 17.0 * noise / 28.0 / 64.0;
+    }
+
+    return fmin(noise, 1.0) * 17.0 / 40.0 / 64.0;
 }

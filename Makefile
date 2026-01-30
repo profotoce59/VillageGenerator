@@ -25,21 +25,18 @@ help:
 	@echo ""
 
 # Test Java
-test-java:
+test-java-height:
 	@echo "$(BLUE)========================================$(NC)"
 	@echo "$(BLUE)     Test JAVA - SurfaceGenerator      $(NC)"
 	@echo "$(BLUE)========================================$(NC)"
-	@./gradlew --quiet --console=plain run --args="CompareSurfaceGenTest" 2>/dev/null || \
-	./gradlew compileJava && \
-	java -cp "build/classes/java/main:$(shell find ~/.gradle/caches -name '*.jar' 2>/dev/null | tr '\n' ':')" \
-		profotoce59.test.CompareSurfaceGenTest
+	@./gradlew runCompareTest --quiet
 
 # Test C
-test-c:
+test-c-height:
 	@echo "$(YELLOW)========================================$(NC)"
 	@echo "$(YELLOW)       Test C - SurfaceGen             $(NC)"
 	@echo "$(YELLOW)========================================$(NC)"
-	@cd c && $(MAKE) example
+	@cd c && $(MAKE) example-height
 
 # Exécuter les deux tests et comparer
 compare: clean-output
@@ -48,9 +45,7 @@ compare: clean-output
 	@echo "$(GREEN)========================================$(NC)"
 	@echo ""
 	@echo "$(BLUE)>>> Exécution du test Java...$(NC)"
-	@./gradlew compileJava --quiet 2>/dev/null || true
-	@java -cp "build/classes/java/main:$$(find ~/.gradle/caches/modules-2/files-2.1 -name '*.jar' 2>/dev/null | tr '\n' ':')" \
-		profotoce59.test.CompareSurfaceGenTest > output_java.txt 2>&1 || true
+	@./gradlew runCompareTest --quiet > output_java.txt 2>&1 || true
 	@cat output_java.txt
 	@echo ""
 	@echo "$(YELLOW)>>> Exécution du test C...$(NC)"
