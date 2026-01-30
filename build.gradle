@@ -10,8 +10,8 @@ archivesBaseName = 'profotoce59'
 group = 'profotoce59'
 version '1.0-SNAPSHOT'
 
-sourceCompatibility = JavaVersion.VERSION_16
-targetCompatibility = JavaVersion.VERSION_16
+sourceCompatibility = JavaVersion.VERSION_21
+targetCompatibility = JavaVersion.VERSION_21
 
 allprojects {
     repositories {
@@ -51,8 +51,22 @@ test {
     useJUnitPlatform()
 }
 
+// Tâche pour exécuter le test de comparaison
+task runCompareTest(type: JavaExec) {
+    group = 'verification'
+    description = 'Exécute le test de comparaison Java/C'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'profotoce59.test.CompareSurfaceGenTest'
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 java {
     withSourcesJar()
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
 }
 
 // configure the maven publication

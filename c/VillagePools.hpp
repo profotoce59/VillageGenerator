@@ -6,6 +6,17 @@
 #include <utility>
 #include "VillageGenerator.hpp"
 
+// hasher pour enum class (si tu utilises std::unordered_map<VillageType,...>)
+struct EnumClassHash {
+  template <class E>
+  size_t operator()(E e) const {
+    using U = std::underlying_type_t<E>;
+    return std::hash<U>{}(static_cast<U>(e));
+  }
+};
+
+// Déclaration (PAS de définition ici)
+extern const std::unordered_map<VillageType, JigSawPool, EnumClassHash> STARTS;
 // Structure pour stocker les informations de template
 struct TemplateEntry {
     std::string name;

@@ -2,6 +2,7 @@ package profotoce59.reecriture;
 
 import com.seedfinding.mcbiome.source.BiomeSource;
 import com.seedfinding.mccore.block.Block;
+import com.seedfinding.mccore.block.Blocks;
 import com.seedfinding.mccore.rand.ChunkRand;
 import com.seedfinding.mccore.state.Dimension;
 import com.seedfinding.mccore.version.MCVersion;
@@ -36,7 +37,7 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
         super(biomeSource, worldHeight, horizontalNoiseResolution, verticalNoiseResolution, noiseSettings, densityFactor, densityOffset, useSimplexNoise);
         this.chunkHeight = verticalNoiseResolution * 4;
         this.chunkWidth = horizontalNoiseResolution * 4;
-        this.noiseSizeY = worldHeight / this.chunkHeight;
+        this.noiseSizeY = worldHeight / this.chunkHeight; //32
         this.noiseSettings = noiseSettings;
         this.random1 = new ChunkRand(biomeSource.getWorldSeed());
         this.minLimitPerlinNoise = new OctavePerlinNoiseSampler(this.random1, IntStream.rangeClosed(-15, 0));//for version 1.15+
@@ -44,7 +45,7 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
         this.mainPerlinNoise = new OctavePerlinNoiseSampler(this.random1, IntStream.rangeClosed(-7, 0));
         this.densityFactor = densityFactor;
         this.densityOffset = densityOffset;
-        this.startSizeY = Math.round(startSizeY/8);
+        this.startSizeY = Math.round(startSizeY/8); //8
     }
     public void setStartSizeY(int newStartSize){
 
@@ -86,6 +87,18 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
             noiseColumnCache.put(key, ds);
             return ds;
         }
+    }
+    public Block getBlockFromNoise(double noise, int y) {
+        Block block;
+        if(noise > 0.0D) {
+            block = Blocks.STONE;
+        } else if(y < this.getSeaLevel()) {
+            block = Blocks.AIR;
+        } else {
+            block = Blocks.AIR;
+        }
+
+        return block;
     }
     public int generateColumnfromY(int x, int z, Predicate<Block> blockPredicate) {
         // those are the coordinates of the region in the grid chosen
@@ -137,35 +150,40 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
             return;
         }
 
-        double sizeY = this.getMaxNoiseY();
-        double minY = this.getMinNoiseY();
+        double sizeY = this.getMaxNoiseY();//29
+        double minY = this.getMinNoiseY();//0
         double randomOffset = this.biomeSource.getDimension() == Dimension.OVERWORLD ? this.sampleNoise(x, z) : 0.0D;
-        for(int y = 6; y < startSizeY; ++y) {
+        for(int y = 6; y < startSizeY; ++y) { //il va donc de la coord 48 à la coord ancienneSize+25
             // everything below is only for 1.14+
             double noise = this.sampleNoise(x, y, z);
             if(version.isNewerOrEqualTo(MCVersion.v1_16)) {
-                double fallOff = 1.0D - (double)y * 2.0D / (double)this.noiseSizeY + randomOffset;
-                fallOff = fallOff * densityFactor + densityOffset;
+                double fallOff = 1.0D - (double)y * 2.0D / (double)this.noiseSizeY + randomOffset; //noiseSizeY = 32
+                fallOff = fallOff * densityFactor + densityOffset; //densityOffset = 0.46875 density factor = 1
                 fallOff = (fallOff + depth) * scale;
                 noise = fallOff > 0.0 ? noise + fallOff * 4.0D : noise + fallOff;
-                if(this.noiseSettings.topSlideSettings.size > 0.0D) {
+                if(this.noiseSettings.topSlideSettings.size > 0.0D) {//toujours vrai (3) pour du overworld //target offset size : -10 0 3 //pour moi ça retourne toujours n0 donc inutile dans le cas ou on commence avec un y assez élevé
                     noise = MathHelper.clampedLerp(this.noiseSettings.topSlideSettings.target, noise, ((double)(this.noiseSizeY - y) - this.noiseSettings.topSlideSettings.offset) / this.noiseSettings.topSlideSettings.size);
                 }
-                if(this.noiseSettings.bottomSlideSettings.size > 0.0D) {
+                if(this.noiseSettings.bottomSlideSettings.size > 0.0D) {//toujours faux (0) pour du overworld
                     noise = MathHelper.clampedLerp(this.noiseSettings.bottomSlideSettings.target, noise, ((double)y - this.noiseSettings.bottomSlideSettings.offset) / this.noiseSettings.bottomSlideSettings.size);
                 }
             } else {
                 noise -= this.computeNoiseFalloff(depth, scale, y);
-                if((double)y > sizeY) {
+                if((double)y > sizeY) { //n'arrive jamais sauf à la height limit
+                    System.out.println ("delta "+(y - sizeY - this.noiseSettings.topSlideSettings.offset) / (double)this.noiseSettings.topSlideSettings.size);
                     noise = MathHelper.clampedLerp(noise, this.noiseSettings.topSlideSettings.target, (y - sizeY - this.noiseSettings.topSlideSettings.offset) / (double)this.noiseSettings.topSlideSettings.size);
-                } else if((double)y < minY) {
+                } else if((double)y < minY) { //même pas possible minY = 0
                     noise = MathHelper.clampedLerp(noise, this.noiseSettings.bottomSlideSettings.target, (minY - (double)y) / (minY - 1.0D));
                 }
             }
+            System.out.println("i :"+ x);
+            System.out.println("j :"+ z);
+            System.out.println("y :"+ y);
+            System.out.println("noise :"+ noise);
             buffer[y] = noise;
         }
     }
-    private double sampleNoise(int x, int y, int z) {
+    private double sampleNoise(int x, int y, int z) { //correspondance avec sampleSurfaceNoise
         double xzScale = NoiseSettings.COORDINATE_SCALE * noiseSettings.samplingSettings.xzScale;
         double yScale = NoiseSettings.HEIGHT_SCALE * noiseSettings.samplingSettings.yScale;
         double xzStep = xzScale / noiseSettings.samplingSettings.xzFactor;

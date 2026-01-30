@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="profotoce59.Example" tests="1" skipped="0" failures="0" errors="0" timestamp="2024-07-09T16:22:27" hostname="MacBook-Pro.local" time="16.371">
+  <properties/>
+  <testcase name="villageExample()" classname="profotoce59.Example" time="16.371"/>
+  <system-out><![CDATA[Found a seed!
+Seed: 3947
+Location: Pos{x=290, y=69, z=132}
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

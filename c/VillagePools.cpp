@@ -1,5 +1,6 @@
 #include "VillagePools.hpp"
 #include <random>
+#include "JigSawPool.hpp"
 
 // Factory pour créer le bon type de pool en fonction du biome
 std::unique_ptr<VillagePool> createVillagePool(VillageType type) {
@@ -18,6 +19,14 @@ std::unique_ptr<VillagePool> createVillagePool(VillageType type) {
             return nullptr;
     }
 }
+
+static const std::unordered_map<VillageType, JigSawPool, EnumClassHash> STARTS = {
+  { VillageType::TAIGA,  make_pool(TaigaPool().getTemplates(PoolType::TAIGA_CENTER)) },
+  { VillageType::PLAINS, make_pool(PlainsPool().getTemplates(PoolType::PLAIN_CENTER)) },
+  { VillageType::DESERT, make_pool(DesertPool().getTemplates(PoolType::DESERT_CENTER)) },
+  { VillageType::SAVANNA, make_pool(SavannaPool().getTemplates(PoolType::SAVANNA_CENTER)) },
+  { VillageType::SNOWY, make_pool(SnowyPool().getTemplates(PoolType::SNOWY_CENTER)) },
+};
 
 // Fonction utilitaire pour sélectionner un template aléatoire en tenant compte des poids
 std::string selectRandomTemplate(const std::vector<TemplateEntry>& templates, std::mt19937& rng) {

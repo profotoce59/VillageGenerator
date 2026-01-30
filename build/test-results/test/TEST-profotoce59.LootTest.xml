@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="profotoce59.LootTest" tests="5" skipped="0" failures="0" errors="0" timestamp="2024-07-09T16:22:44" hostname="MacBook-Pro.local" time="0.109">
+  <properties/>
+  <testcase name="testSavannah()" classname="profotoce59.LootTest" time="0.027"/>
+  <testcase name="testSnowy()" classname="profotoce59.LootTest" time="0.021"/>
+  <testcase name="testTaiga()" classname="profotoce59.LootTest" time="0.011"/>
+  <testcase name="testDesert()" classname="profotoce59.LootTest" time="0.021"/>
+  <testcase name="testPlains()" classname="profotoce59.LootTest" time="0.02"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

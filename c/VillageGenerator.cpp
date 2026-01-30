@@ -5,9 +5,12 @@
 #include "Biome.hpp"
 #include "ChunkRand.hpp"
 #include "TerrainGenerator.hpp"
+#include "village_structure_size.hpp"
 #include "BiomeSource.hpp"
+#include "JigSawPool.hpp"
 #include <algorithm>
 #include <stdexcept>
+
 
 // BlockBox implementation
 bool BlockBox::contains(const BPos& pos) const {
@@ -167,21 +170,58 @@ VillageGenerator::~VillageGenerator() = default;
 bool VillageGenerator::generate(TerrainGenerator* generator, int chunkX, int chunkZ, ChunkRand& rand) {
     pieces.clear();
     generated = false;
-    
-    // Créer la pièce centrale
-    auto startBox = BlockBox(chunkX * 16, 0, chunkZ * 16, 
-                           chunkX * 16 + 16, 256, chunkZ * 16 + 16);
-    auto startPos = BPos(chunkX * 16, 64, chunkZ * 16);
-    
-    auto piece = std::make_unique<Piece>(
-        "start",
-        startPos,
-        startBox,
-        BlockRotation::NONE,
-        PlacementBehaviour::RIGID,
-        0
-    );
 
+    // 1) Biome and villageType resolution (do this earlier if you already have it)
+    Biome* biome = generator->getBiomeSource()->getBiomeForNoiseGen((chunkX << 2) + 2, 0, (chunkZ << 2) + 2);
+    villageType = VillageType::getType(biome);
+    if (villageType == VillageType::UNKNOWN /* or however you signal null */) return false;
+
+    // 2) canStart / canSpawn / canGenerate (mirror Java checks if you have them)
+    // if (!Village::canStart(...)) return false;
+    // if (!superflat && !Village::canSpawn(chunkX, chunkZ, generator->getBiomeSource())) return false;
+    // if (!superflat && !Village::canGenerate(chunkX, chunkZ, generator)) return false;
+
+    // 3) Seed rotation the Minecraft way
+    rand.setCarverSeed(generator->getWorldSeed(), chunkX, chunkZ);
+    BlockRotation rotation = BlockRotationHelper::getRandom(rand.getRNG());
+
+    // 4) START pool + random template
+    
+    const JigSawPool& pool = STARTS.at(villageType);
+    String template = rand.getRandom(jigSawPool.getTemplates());
+
+    std::string templateName = startPool.getRandom(rand.getRNG());
+    if (templateName.empty()) return false;
+
+    // // Optional filter like in Java (to bias to max streets, etc.)
+    // if (templateName != "desert/town_centers/desert_meeting_point_2") return false;
+
+    // 5) Template size and world-space bounding box
+    BPos size;
+    get_bpos(templateName.c_str(), &size);
+
+    BPos bPos = BPos::fromChunk(chunkX, 0, chunkZ);
+    BlockBox box = BlockBox::getBoundingBox(bPos, rotation, size);
+
+    int centerX = (box.minX + box.maxX) / 2;
+    int centerZ = (box.minZ + box.maxZ) / 2;
+
+    // 6) Ground Y from WORLD_SURFACE_WG and vertical alignment like Java
+    int heightY = generator->getFirstHeightInColumn(centerX, centerZ, Surface::WORLD_SURFACE_WG);
+    int y       = bPos.y + heightY;
+    int centerY = box.minY + 1;
+
+    // 7) First piece (always RIGID), moved to Y and bounded
+    auto piece = std::make_unique<Piece>(
+        templateName, bPos, box, rotation, PlacementBehaviour::RIGID, /*depth=*/0
+    );
+    piece->move(0, y - centerY, 0);
+
+    // 8) Full village box (±80 in each axis) like Java
+    BlockBox fullBox{
+        centerX - 80, y - 80, centerZ - 80,
+        centerX + 80 + 1, y + 80 + 1, centerZ + 80 + 1
+    };
     // Configurer l'assembleur et générer le village
     Assembler assembler(6, generator, pieces, useHeightMapOptimizer);
     assembler.tryPlacing(villageType, piece.get(), rand, true);

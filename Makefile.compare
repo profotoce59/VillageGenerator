@@ -1,0 +1,73 @@
+# Makefile pour comparer les tests Java et C
+# Usage:
+#   make -f Makefile.compare test-java    # Exécuter le test Java
+#   make -f Makefile.compare test-c       # Exécuter le test C
+#   make -f Makefile.compare compare      # Exécuter les deux et comparer
+
+.PHONY: all test-java test-c compare clean help
+
+# Couleurs pour l'affichage
+BLUE := \033[0;34m
+GREEN := \033[0;32m
+YELLOW := \033[0;33m
+NC := \033[0m # No Color
+
+all: compare
+
+help:
+	@echo "$(BLUE)=== Makefile de comparaison Java/C ===$(NC)"
+	@echo ""
+	@echo "Cibles disponibles :"
+	@echo "  $(GREEN)test-java$(NC)  - Exécuter le test Java"
+	@echo "  $(GREEN)test-c$(NC)     - Exécuter le test C"
+	@echo "  $(GREEN)compare$(NC)    - Exécuter les deux tests et comparer"
+	@echo "  $(GREEN)clean$(NC)      - Nettoyer les fichiers générés"
+	@echo ""
+
+# Test Java
+test-java:
+	@echo "$(BLUE)========================================$(NC)"
+	@echo "$(BLUE)     Test JAVA - SurfaceGenerator      $(NC)"
+	@echo "$(BLUE)========================================$(NC)"
+	@./gradlew --quiet --console=plain run --args="CompareSurfaceGenTest" 2>/dev/null || \
+	./gradlew compileJava && \
+	java -cp "build/classes/java/main:$(shell find ~/.gradle/caches -name '*.jar' 2>/dev/null | tr '\n' ':')" \
+		profotoce59.test.CompareSurfaceGenTest
+
+# Test C
+test-c:
+	@echo "$(YELLOW)========================================$(NC)"
+	@echo "$(YELLOW)       Test C - SurfaceGen             $(NC)"
+	@echo "$(YELLOW)========================================$(NC)"
+	@cd c && $(MAKE) example
+
+# Exécuter les deux tests et comparer
+compare: clean-output
+	@echo "$(GREEN)========================================$(NC)"
+	@echo "$(GREEN)   Comparaison Java vs C               $(NC)"
+	@echo "$(GREEN)========================================$(NC)"
+	@echo ""
+	@echo "$(BLUE)>>> Exécution du test Java...$(NC)"
+	@./gradlew compileJava --quiet 2>/dev/null || true
+	@java -cp "build/classes/java/main:$$(find ~/.gradle/caches/modules-2/files-2.1 -name '*.jar' 2>/dev/null | tr '\n' ':')" \
+		profotoce59.test.CompareSurfaceGenTest > output_java.txt 2>&1 || true
+	@cat output_java.txt
+	@echo ""
+	@echo "$(YELLOW)>>> Exécution du test C...$(NC)"
+	@cd c && $(MAKE) example > ../output_c.txt 2>&1
+	@cat output_c.txt
+	@echo ""
+	@echo "$(GREEN)========================================$(NC)"
+	@echo "$(GREEN)   Résultats sauvegardés dans :        $(NC)"
+	@echo "$(GREEN)   - output_java.txt                   $(NC)"
+	@echo "$(GREEN)   - output_c.txt                      $(NC)"
+	@echo "$(GREEN)========================================$(NC)"
+
+# Nettoyer les fichiers de sortie
+clean-output:
+	@rm -f output_java.txt output_c.txt
+
+clean: clean-output
+	@cd c && $(MAKE) clean
+	@./gradlew clean --quiet 2>/dev/null || true
+	@echo "Nettoyage terminé."
