@@ -1,12 +1,15 @@
 #pragma once
 
 #include "Biome.hpp"
+#include "SurfaceGenWrapper.hpp"
 #include <memory>
 #include <functional>
 #include <vector>
 
 class BiomeSource;
-class Block;
+// Note: Block is defined in surface_gen.h (C enum), not as a C++ class
+// We use void* for now to avoid conflicts
+// class Block;
 
 class TerrainGenerator {
 public:
@@ -20,11 +23,11 @@ public:
     BiomeSource* getBiomeSource() const { return biomeSource.get(); }
 
     // Terrain generation methods
-    virtual int getFirstHeightInColumn(int x, int z, std::function<bool(Block*)> predicate) = 0;
+    virtual int getFirstHeightInColumn(int x, int z, std::function<bool(void*)> predicate) = 0;
     virtual int getHeightOnGround(int x, int z) = 0;
     
     // Utility methods
-    virtual std::vector<Block*> getColumnBlocks(int x, int z) = 0;
+    virtual std::vector<void*> getColumnBlocks(int x, int z) = 0;
     virtual bool canGenerate(int chunkX, int chunkZ) const = 0;
 
 protected:
@@ -36,19 +39,22 @@ protected:
 class OverworldTerrainGenerator : public TerrainGenerator {
 public:
     OverworldTerrainGenerator(uint64_t worldSeed, std::unique_ptr<BiomeSource> biomeSource);
-    
-    int getFirstHeightInColumn(int x, int z, std::function<bool(Block*)> predicate) override;
+
+    int getFirstHeightInColumn(int x, int z, std::function<bool(void*)> predicate) override;
     int getHeightOnGround(int x, int z) override;
-    std::vector<Block*> getColumnBlocks(int x, int z) override;
+    std::vector<void*> getColumnBlocks(int x, int z) override;
     bool canGenerate(int chunkX, int chunkZ) const override;
 
 private:
+    // Générateur de surface utilisant cubiomes
+    std::unique_ptr<SurfaceGenWrapper> surfaceGen;
+
     // Paramètres de génération du terrain
     double heightScale;
     double heightStretch;
     int seaLevel;
-    
+
     // Méthodes privées pour la génération
     double getNoise(int x, int z) const;
-    void generateTerrain(int x, int z, std::vector<Block*>& blocks);
+    void generateTerrain(int x, int z, std::vector<void*>& blocks);
 }; 

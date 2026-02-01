@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <stdio.h>  // Pour printf (logs de debug)
 
 // ---------- utils ----------
 double clamped_lerp(double a, double b, double t) {
@@ -89,6 +90,10 @@ void free_surface_cache(SurfaceGen *sg) {
 void sample_noise_column(SurfaceGen *sg, double *buffer, int x, int z)
 {
     // ds = { depth, scale }
+    // TODO: get_depth_and_scale retourne des valeurs différentes de Java!
+    // Java: depth=-0.0162, scale=652.02
+    // C:    depth=-0.0066, scale=342.86
+    // Le problème est dans cubiomes_get_depth_and_scale (cubiomes_integration.c)
     double ds[2] = {0.0, 0.0};
     sg->get_depth_and_scale(x, z, ds, sg->user);
     double depth = ds[0];
@@ -100,34 +105,67 @@ void sample_noise_column(SurfaceGen *sg, double *buffer, int x, int z)
         randomOffset = sg->sample_noise_2d(x, z, sg->user);
     }
 
-    // IMPORTANT : dans ton Java, buffer a taille noiseSizeY+1
-    // et on remplit à partir de y=6 jusqu’à startSizeY-1 inclus.
-    // Laisse buffer[0..5] tranquilles si tu veux coller au jeu.
+    // LOG: paramètres pour position test
+    int enableLogs = (x == 20121 && z == 20185);
+    if (enableLogs) {
+        printf("\n=== C sample_noise_column ===\n");
+        printf("Position: x=%d, z=%d\n", x, z);
+        printf("depth: %.10f, scale: %.10f\n", depth, scale);
+        printf("randomOffset: %.10f\n", randomOffset);
+        printf("densityFactor: %.10f, densityOffset: %.10f\n", sg->densityFactor, sg->densityOffset);
+        printf("noiseSizeY: %d, startSizeY: %d\n", sg->noiseSizeY, sg->startSizeY);
+    }
+
     for (int y = 6; y < sg->startSizeY; ++y) {
 
-        // bruit principal 3D à (x,y,z) dans l’espace "cellule"
+        // bruit principal 3D à (x,y,z) dans l'espace "cellule"
         double noise = sg->sample_noise_3d(x, y, z, sg->user);
 
         // ==== branche 1.16+ ====
-        double fallOff = 1.0 - (double)y * 2.0 / (double)sg->noiseSizeY + randomOffset;
-        fallOff = fallOff * sg->densityFactor + sg->densityOffset;
-        fallOff = (fallOff + depth) * scale;
+        double fallOff1 = 1.0 - (double)y * 2.0 / (double)sg->noiseSizeY + randomOffset;
+        double fallOff2 = fallOff1 * sg->densityFactor + sg->densityOffset;
+        double fallOff3 = (fallOff2 + depth) * scale;
 
+        if (enableLogs && y == 9) {
+            printf("\n=== y=9 falloff calculation ===\n");
+            printf("noise (brut): %.10f\n", noise);
+            printf("fallOff step1: 1.0 - %d * 2.0 / %d + %.10f = %.10f\n", y, sg->noiseSizeY, randomOffset, fallOff1);
+            printf("fallOff step2: %.10f * %.10f + %.10f = %.10f\n", fallOff1, sg->densityFactor, sg->densityOffset, fallOff2);
+            printf("fallOff step3: (%.10f + %.10f) * %.10f = %.10f\n", fallOff2, depth, scale, fallOff3);
+        }
+
+        double fallOff = fallOff3;
         if (fallOff > 0.0)
             noise = noise + fallOff * 4.0;
         else
             noise = noise + fallOff;
 
+        if (enableLogs && y == 9) {
+            printf("fallOff > 0 ? %s -> noise après falloff: %.10f\n", fallOff > 0 ? "OUI" : "NON", noise);
+        }
+
         // slides (top / bottom)
         if (sg->noiseSettings.topSlideSettings.size > 0.0) {
             double num = ((double)(sg->noiseSizeY - y) - sg->noiseSettings.topSlideSettings.offset)
                          / sg->noiseSettings.topSlideSettings.size;
+            if (enableLogs && y == 9) {
+                printf("topSlide: num = ((%d - %d) - %.1f) / %.1f = %.10f\n",
+                       sg->noiseSizeY, y, sg->noiseSettings.topSlideSettings.offset,
+                       sg->noiseSettings.topSlideSettings.size, num);
+            }
             noise = clamped_lerp(sg->noiseSettings.topSlideSettings.target, noise, num);
+            if (enableLogs && y == 9) {
+                printf("noise après topSlide: %.10f\n", noise);
+            }
         }
         if (sg->noiseSettings.bottomSlideSettings.size > 0.0) {
             double num = ((double)y - sg->noiseSettings.bottomSlideSettings.offset)
                          / sg->noiseSettings.bottomSlideSettings.size;
             noise = clamped_lerp(sg->noiseSettings.bottomSlideSettings.target, noise, num);
+        }
+
+        if (enableLogs && y == 9) {
+            printf("buffer[9] FINAL = %.10f\n", noise);
         }
 
         buffer[y] = noise;
@@ -152,20 +190,34 @@ const double* sample_noise_column_cached(SurfaceGen *sg, int x, int z)
 }
 
 // Implémentation de generateColumnfromY
-int generate_column_from_y(SurfaceGen *sg, int x, int z, 
+int generate_column_from_y(SurfaceGen *sg, int x, int z,
                            BlockPredicate predicate, void *user)
 {
+    // LOG: Activer uniquement pour position de test
+    int enableLogs = (x == 80485 && z == 80741);
+    if (enableLogs) {
+        printf("--- C generate_column_from_y ---\n");
+        printf("Position: (%d, %d)\n", x, z);
+    }
+
     // Coordonnées de la cellule dans la grille
     int cellX = (int)floor((double)x / (double)sg->chunkWidth);
     int cellZ = (int)floor((double)z / (double)sg->chunkWidth);
-    
+
     // Coordonnées locales dans la cellule
     int posX = ((x % sg->chunkWidth) + sg->chunkWidth) % sg->chunkWidth;
     int posZ = ((z % sg->chunkWidth) + sg->chunkWidth) % sg->chunkWidth;
-    
+
     // Pourcentages de position
     double percentX = (double)posX / (double)sg->chunkWidth;
     double percentZ = (double)posZ / (double)sg->chunkWidth;
+
+    if (enableLogs) {
+        printf("chunkWidth: %d\n", sg->chunkWidth);
+        printf("cellX: %d, cellZ: %d\n", cellX, cellZ);
+        printf("posX: %d, posZ: %d\n", posX, posZ);
+        printf("percentX: %.6f, percentZ: %.6f\n", percentX, percentZ);
+    }
     
     // Échantillonner les 4 colonnes de bruit aux coins
     int len = sg->noiseSizeY + 1;
@@ -178,7 +230,21 @@ int generate_column_from_y(SurfaceGen *sg, int x, int z,
     sample_noise_column(sg, ds[1], cellX, cellZ + 1);
     sample_noise_column(sg, ds[2], cellX + 1, cellZ);
     sample_noise_column(sg, ds[3], cellX + 1, cellZ + 1);
-    
+
+    // LOG: Afficher les valeurs échantillonnées aux 4 coins pour cellY=9
+    if (enableLogs && len > 9) {
+        printf("\nValeurs de noise échantillonnées aux 4 coins (cellY=9):\n");
+        printf("  ds[0][9] (cellX, cellZ): %.6f\n", ds[0][9]);
+        printf("  ds[1][9] (cellX, cellZ+1): %.6f\n", ds[1][9]);
+        printf("  ds[2][9] (cellX+1, cellZ): %.6f\n", ds[2][9]);
+        printf("  ds[3][9] (cellX+1, cellZ+1): %.6f\n", ds[3][9]);
+        printf("  ds[0][10] (cellX, cellZ): %.6f\n", ds[0][10]);
+        printf("  ds[1][10] (cellX, cellZ+1): %.6f\n", ds[1][10]);
+        printf("  ds[2][10] (cellX+1, cellZ): %.6f\n", ds[2][10]);
+        printf("  ds[3][10] (cellX+1, cellZ+1): %.6f\n", ds[3][10]);
+        printf("\n");
+    }
+
     // Parcourir de haut en bas
     for (int cellY = sg->startSizeY - 1; cellY >= 0; --cellY) {
         double xyz = ds[0][cellY];
@@ -200,12 +266,21 @@ int generate_column_from_y(SurfaceGen *sg, int x, int z,
             
             int y = cellY * sg->chunkHeight + posY;
             Block block = get_block_from_noise(noise, y, user);
+
+            // LOG: Détails pour Y autour de 68-76
             
+            printf("  cellY=%d, posY=%d, y=%d, percentY=%.4f, noise=%.6f, block=%d\n",
+                       cellY, posY, y, percentY, noise, block);
+            
+
             // Test du prédicat
             if (predicate != NULL && predicate(block, user)) {
                 // Libérer la mémoire
                 for (int i = 0; i < 4; i++) {
                     free(ds[i]);
+                }
+                if (enableLogs) {
+                    printf(">>> BLOC TROUVÉ à y=%d (retourne %d)\n", y, y + 1);
                 }
                 return y + 1;
             }
@@ -216,7 +291,9 @@ int generate_column_from_y(SurfaceGen *sg, int x, int z,
     for (int i = 0; i < 4; i++) {
         free(ds[i]);
     }
-    
+    if (enableLogs) {
+        printf(">>> AUCUN BLOC TROUVÉ (retourne 0)\n");
+    }
     return 0;
 }
 

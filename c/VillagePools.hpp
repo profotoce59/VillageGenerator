@@ -3,8 +3,11 @@
 #include <string>
 #include <vector>
 #include <map>
+#include <unordered_map>
 #include <utility>
+#include <random>
 #include "VillageGenerator.hpp"
+#include "JigSawPool.hpp"
 
 // hasher pour enum class (si tu utilises std::unordered_map<VillageType,...>)
 struct EnumClassHash {
@@ -17,14 +20,6 @@ struct EnumClassHash {
 
 // Déclaration (PAS de définition ici)
 extern const std::unordered_map<VillageType, JigSawPool, EnumClassHash> STARTS;
-// Structure pour stocker les informations de template
-struct TemplateEntry {
-    std::string name;
-    int weight;
-    
-    TemplateEntry(const std::string& name, int weight) 
-        : name(name), weight(weight) {}
-};
 
 // Classe de base pour tous les pools
 class VillagePool {

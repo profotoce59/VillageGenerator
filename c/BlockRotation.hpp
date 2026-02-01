@@ -1,7 +1,7 @@
 #pragma once
 
 #include <random>
-#include "VillageGenerator.hpp"
+#include "BlockStructures.hpp"
 
 // Direction d'un bloc
 enum class BlockDirection {
@@ -28,9 +28,15 @@ enum class BlockMirror {
     FRONT_BACK
 };
 
+// Forward declaration
+class ChunkRand;
+
 class BlockRotationHelper {
 public:
-    // Obtenir une rotation aléatoire
+    // Obtenir une rotation aléatoire from ChunkRand
+    static BlockRotation getRandom(ChunkRand& rand);
+
+    // Obtenir une rotation aléatoire from std::mt19937_64
     static BlockRotation getRandom(std::mt19937_64& rng) {
         std::uniform_int_distribution<int> dist(0, 3);
         switch (dist(rng)) {

@@ -10,48 +10,60 @@
 #include "JigSawPool.hpp"
 #include <algorithm>
 #include <stdexcept>
+#include <iostream>
 
+// Helper function to convert Biome type to Village type
+static VillageType biomeToVillageType(const Biome* biome) {
+    if (!biome) return VillageType::PLAINS;  // default
 
-// BlockBox implementation
-bool BlockBox::contains(const BPos& pos) const {
-    return pos.x >= minX && pos.x <= maxX &&
-           pos.y >= minY && pos.y <= maxY &&
-           pos.z >= minZ && pos.z <= maxZ;
+    switch (biome->getType()) {
+        case Biome::Type::DESERT:
+            return VillageType::DESERT;
+        case Biome::Type::PLAINS:
+            return VillageType::PLAINS;
+        case Biome::Type::TAIGA:
+            return VillageType::TAIGA;
+        case Biome::Type::SAVANNA:
+            return VillageType::SAVANNA;
+        case Biome::Type::SNOWY_TUNDRA:
+            return VillageType::SNOWY;
+        default:
+            return VillageType::PLAINS;
+    }
 }
 
-void BlockBox::move(int dx, int dy, int dz) {
-    minX += dx; maxX += dx;
-    minY += dy; maxY += dy;
-    minZ += dz; maxZ += dz;
+// BlockRotationHelper implementation for ChunkRand
+BlockRotation BlockRotationHelper::getRandom(ChunkRand& rand) {
+    int value = rand.nextInt(4);
+    switch (value) {
+        case 0: return BlockRotation::NONE;
+        case 1: return BlockRotation::CLOCKWISE_90;
+        case 2: return BlockRotation::CLOCKWISE_180;
+        case 3: return BlockRotation::COUNTERCLOCKWISE_90;
+        default: return BlockRotation::NONE;
+    }
 }
 
-// VillageGenerator implementation
-class VillageGenerator::Piece {
-public:
-    std::string name;
-    BPos pos;
-    BlockBox box;
-    BlockRotation rotation;
-    int depth;
-    PlacementBehaviour placementBehaviour;
-    VoxelShape voxelShape;
-    
-    Piece(const std::string& name, const BPos& pos, const BlockBox& box, 
-          BlockRotation rotation, PlacementBehaviour behaviour, int depth)
-        : name(name), pos(pos), box(box), rotation(rotation), 
-          depth(depth), placementBehaviour(behaviour) {
-        voxelShape = VoxelShape(box);
-    }
-        
-    void move(int dx, int dy, int dz) {
-        box.move(dx, dy, dz);
-        pos = pos.add(dx, dy, dz);
-    }
+// VillageGenerator::Piece implementation
+VillageGenerator::Piece::Piece(const std::string& name, const BPos& pos, const BlockBox& box,
+                                BlockRotation rotation, PlacementBehaviour behaviour, int depth)
+    : name(name), pos(pos), box(box), rotation(rotation),
+      depth(depth), placementBehaviour(behaviour), voxelShape(nullptr) {
+    voxelShape = new VoxelShape(box);
+}
 
-    BPos getTransformedPos(const BPos& relativePos) const {
-        return BlockRotationHelper::rotate(relativePos, rotation);
-    }
-};
+VillageGenerator::Piece::~Piece() {
+    delete voxelShape;
+}
+
+void VillageGenerator::Piece::move(int dx, int dy, int dz) {
+    box.move(dx, dy, dz);
+    pos = pos.add(dx, dy, dz);
+}
+
+BPos VillageGenerator::Piece::getTransformedPos(const BPos& relativePos) const {
+    return BlockRotationHelper::rotate(relativePos, rotation);
+}
 
 class VillageGenerator::Assembler {
 public:
@@ -92,12 +104,14 @@ public:
                 auto templates = pool->getTemplates(poolType);
                 if (templates.empty()) continue;
 
-                // Sélectionner un template aléatoire
-                std::string templateName = selectRandomTemplate(templates, rand.getRNG());
+                // Sélectionner un template aléatoire (for now, just pick randomly using nextInt)
+                if (templates.empty()) continue;
+                int idx = rand.nextInt(templates.size());
+                std::string templateName = templates[idx].name;
                 if (templateName.empty()) continue;
 
                 // Créer la nouvelle pièce
-                BlockRotation newRotation = BlockRotationHelper::getRandom(rand.getRNG());
+                BlockRotation newRotation = BlockRotationHelper::getRandom(rand);
                 auto newBox = createBoundingBox(relativePos, newRotation, templateName);
                 
                 auto newPiece = std::make_unique<Piece>(
@@ -140,7 +154,7 @@ private:
     bool isValidPlacement(const Piece* piece) const {
         // Vérifier les collisions avec les pièces existantes
         for (const auto& existingPiece : pieces) {
-            if (piece->voxelShape.intersects(existingPiece->box)) {
+            if (piece->voxelShape && piece->voxelShape->intersects(existingPiece->box)) {
                 return false;
             }
         }
@@ -171,32 +185,23 @@ bool VillageGenerator::generate(TerrainGenerator* generator, int chunkX, int chu
     pieces.clear();
     generated = false;
 
-    // 1) Biome and villageType resolution (do this earlier if you already have it)
-    Biome* biome = generator->getBiomeSource()->getBiomeForNoiseGen((chunkX << 2) + 2, 0, (chunkZ << 2) + 2);
-    villageType = VillageType::getType(biome);
-    if (villageType == VillageType::UNKNOWN /* or however you signal null */) return false;
+    // 1) Biome and villageType resolution
+    Biome* biome = nullptr;
+    if (generator->getBiomeSource()) {
+        biome = generator->getBiomeSource()->getBiomeForNoiseGen((chunkX << 2) + 2, 0, (chunkZ << 2) + 2);
+    }
+    villageType = biomeToVillageType(biome);
 
-    // 2) canStart / canSpawn / canGenerate (mirror Java checks if you have them)
-    // if (!Village::canStart(...)) return false;
-    // if (!superflat && !Village::canSpawn(chunkX, chunkZ, generator->getBiomeSource())) return false;
-    // if (!superflat && !Village::canGenerate(chunkX, chunkZ, generator)) return false;
-
-    // 3) Seed rotation the Minecraft way
+    // 2) Seed rotation the Minecraft way
     rand.setCarverSeed(generator->getWorldSeed(), chunkX, chunkZ);
-    BlockRotation rotation = BlockRotationHelper::getRandom(rand.getRNG());
+    BlockRotation rotation = BlockRotationHelper::getRandom(rand);
 
-    // 4) START pool + random template
-    
-    const JigSawPool& pool = STARTS.at(villageType);
-    String template = rand.getRandom(jigSawPool.getTemplates());
+    // 3) Get start pool for this village type
+    // For now, create a simple desert town center as placeholder
+    // TODO: Use STARTS map when it's properly defined
+    std::string templateName = "desert/town_centers/desert_meeting_point_2";
 
-    std::string templateName = startPool.getRandom(rand.getRNG());
-    if (templateName.empty()) return false;
-
-    // // Optional filter like in Java (to bias to max streets, etc.)
-    // if (templateName != "desert/town_centers/desert_meeting_point_2") return false;
-
-    // 5) Template size and world-space bounding box
+    // 4) Template size and world-space bounding box
     BPos size;
     get_bpos(templateName.c_str(), &size);
 
@@ -206,27 +211,37 @@ bool VillageGenerator::generate(TerrainGenerator* generator, int chunkX, int chu
     int centerX = (box.minX + box.maxX) / 2;
     int centerZ = (box.minZ + box.maxZ) / 2;
 
-    // 6) Ground Y from WORLD_SURFACE_WG and vertical alignment like Java
-    int heightY = generator->getFirstHeightInColumn(centerX, centerZ, Surface::WORLD_SURFACE_WG);
-    int y       = bPos.y + heightY;
+    // 5) Ground Y using height map
+    int heightY = generator->getHeightOnGround(centerX, centerZ);
+    int y = bPos.y + heightY;
     int centerY = box.minY + 1;
 
-    // 7) First piece (always RIGID), moved to Y and bounded
+    // DEBUG: Print height calculation details
+    std::cout << "DEBUG Height Calculation:" << std::endl;
+    std::cout << "  centerX, centerZ: " << centerX << ", " << centerZ << std::endl;
+    std::cout << "  heightY (from getHeightOnGround): " << heightY << std::endl;
+    std::cout << "  bPos.y: " << bPos.y << std::endl;
+    std::cout << "  y (bPos.y + heightY): " << y << std::endl;
+    std::cout << "  Initial box.minY: " << box.minY << std::endl;
+    std::cout << "  centerY (box.minY + 1): " << centerY << std::endl;
+    std::cout << "  Movement delta (y - centerY): " << (y - centerY) << std::endl;
+
+    // 6) First piece (always RIGID), moved to Y
     auto piece = std::make_unique<Piece>(
         templateName, bPos, box, rotation, PlacementBehaviour::RIGID, /*depth=*/0
     );
     piece->move(0, y - centerY, 0);
 
-    // 8) Full village box (±80 in each axis) like Java
-    BlockBox fullBox{
-        centerX - 80, y - 80, centerZ - 80,
-        centerX + 80 + 1, y + 80 + 1, centerZ + 80 + 1
-    };
-    // Configurer l'assembleur et générer le village
-    Assembler assembler(6, generator, pieces, useHeightMapOptimizer);
-    assembler.tryPlacing(villageType, piece.get(), rand, true);
+    std::cout << "  Final piece pos.y: " << piece->pos.y << std::endl;
+    std::cout << "  Final box.minY: " << piece->box.minY << std::endl;
+
+    // 7) Configure assembler and generate village
     pieces.push_back(std::move(piece));
-    
+
+    // TODO: Actually run the assembler to add more pieces
+    // Assembler assembler(6, generator, pieces, useHeightMapOptimizer);
+    // assembler.tryPlacing(villageType, pieces[0].get(), rand, true);
+
     generated = true;
     return true;
 }

@@ -20,7 +20,7 @@ std::unique_ptr<VillagePool> createVillagePool(VillageType type) {
     }
 }
 
-static const std::unordered_map<VillageType, JigSawPool, EnumClassHash> STARTS = {
+const std::unordered_map<VillageType, JigSawPool, EnumClassHash> STARTS = {
   { VillageType::TAIGA,  make_pool(TaigaPool().getTemplates(PoolType::TAIGA_CENTER)) },
   { VillageType::PLAINS, make_pool(PlainsPool().getTemplates(PoolType::PLAIN_CENTER)) },
   { VillageType::DESERT, make_pool(DesertPool().getTemplates(PoolType::DESERT_CENTER)) },

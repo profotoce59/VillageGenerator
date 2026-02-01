@@ -62,6 +62,83 @@ task runCompareTest(type: JavaExec) {
     }
 }
 
+// Tâche pour trouver une seed de village
+task findVillageSeed(type: JavaExec) {
+    group = 'application'
+    description = 'Trouve une seed avec un village qui se génère correctement'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'profotoce59.test.FindVillageSeed'
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// Tâche pour comparer les pièces du village
+task compareVillagePieces(type: JavaExec) {
+    group = 'verification'
+    description = 'Affiche toutes les pièces du village pour comparaison Java/C'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'profotoce59.properties.CompareVillagePieces'
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// Tâche pour vérifier la hauteur à une position donnée
+task checkHeight(type: JavaExec) {
+    group = 'verification'
+    description = 'Vérifie la hauteur du terrain à une position donnée'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'profotoce59.test.CheckHeightAt'
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// Tâche pour comparer en détail les différentes méthodes de calcul de hauteur
+task detailedHeightCheck(type: JavaExec) {
+    group = 'verification'
+    description = 'Compare les différentes méthodes de calcul de hauteur en Java'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'profotoce59.test.DetailedHeightCheck'
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// Tâche pour analyser le décalage de hauteur sur plusieurs seeds/positions
+task heightOffsetAnalysis(type: JavaExec) {
+    group = 'verification'
+    description = 'Analyse le décalage de hauteur sur plusieurs seeds et positions'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'profotoce59.test.HeightOffsetAnalysis'
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// Tâche pour logger en détail le calcul de hauteur Java
+task logHeightJava(type: JavaExec) {
+    group = 'verification'
+    description = 'Log détaillé du calcul de hauteur Java (génère java_height_log.txt)'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'profotoce59.test.LogHeightCalculationJava'
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// Tâche pour tester SurfaceGenerator2 directement avec logs
+task testSurfaceGen2(type: JavaExec) {
+    group = 'verification'
+    description = 'Test SurfaceGenerator2 directement avec logs détaillés'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'profotoce59.test.TestSurfaceGen2Direct'
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
 java {
     withSourcesJar()
     toolchain {

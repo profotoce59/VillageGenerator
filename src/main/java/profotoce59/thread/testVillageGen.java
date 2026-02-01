@@ -2,6 +2,7 @@
 
 package profotoce59.thread;
 
+import com.seedfinding.mcbiome.source.BiomeSource;
 import com.seedfinding.mcbiome.source.OverworldBiomeSource;
 import com.seedfinding.mccore.block.Blocks;
 import com.seedfinding.mccore.rand.ChunkRand;
@@ -71,27 +72,19 @@ public class testVillageGen implements Runnable{
             structureSeed = structureSeed & 281474976710655L;
             int numGenerationSucceed = 0;
             VillageGenerator villeGen = new VillageGenerator(version);
-            //for(long seed = 0;seed < 1<<3;seed++) {
-                //long worldSeed = structureSeed | (seed<<48);
-            long worldSeed = 123456789L;
-                OverworldBiomeSource bs = new OverworldBiomeSource(version, worldSeed);
-                TerrainGenerator generator = TerrainGenerator.of(Dimension.OVERWORLD, bs);
-                SurfaceGenerator2 customSurfaceGen = new SurfaceGenerator2(generator.getBiomeSource(), 256, 1, 2,
-                        NoiseSettings.create(0.9999999814507745, 0.9999999814507745, 80.0, 160.0)
-                                .addTopSlide(-10, 3, 0)
-                                .addBottomSlide(-30, 0, 0),
-                        1.0D, -0.46875D, true,105);
-                TerrainGenerator tGen = new OverworldTerrainGenerator(bs);
-                int height2 = customSurfaceGen.generateColumnfromY(0, 0,(block) -> block != Blocks.AIR );
-                System.out.println("height 2 : " + height2);
-                return;
-                /*int nb = 0;
+            for(long seed = 0;seed < 1<<2;seed++) {
+                long worldSeed = structureSeed | (seed<<48);
+                BiomeSource biomeSource = BiomeSource.of(Dimension.OVERWORLD, version, worldSeed);
+                TerrainGenerator generator = TerrainGenerator.of(Dimension.OVERWORLD, biomeSource);
+                //if(!(biomeSource.getBiome(sPos)== Biomes.PLAINS ))continue;
+                int nb = 0;
                 for (CPos sPos : villePosList){
                     ChunkRand rand = new ChunkRand();
 
                     if(!villeGen.generate(generator, sPos.getX(),sPos.getZ(),rand,true))continue;
+                    villeGen.toString();
                     //System.out.println(nb++);
-                    int numBS = villeGen.getNumberOfBlackSmith();
+                    /*int numBS = villeGen.getNumberOfBlackSmith();
                     if(numBS>8){
                         System.out.println("worldSeed : " + worldSeed + " structureSeed " + structureSeed+" "+numBS+" /tp "+sPos.getX()*16+" 80 "+sPos.getZ()*16);
                     }
@@ -100,7 +93,7 @@ public class testVillageGen implements Runnable{
                     if(house_num>45) {
                         System.out.println("worldSeed : " + worldSeed + " " + house_num+" "+sPos.toString());
                     }
-                    }*/
+                }
                     /*meanBS = (numGenerationSucceed*meanBS+numBS)/(numGenerationSucceed+1);
                     if(numGenerationSucceed>7 &&  meanBS<1.5){
                         break;
@@ -110,11 +103,8 @@ public class testVillageGen implements Runnable{
                 //}
 
                 //else System.out.println(villeGen.getNumberOfBlackSmith());
-
-
-
-            //}
-
+                }
+            }
         }
     /*private void CheckWorldSeed(long structureSeed, CPos villePosC, ChunkRand chunkRand, MCVersion version, Village ville)
     {

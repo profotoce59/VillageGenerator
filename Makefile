@@ -31,12 +31,33 @@ test-java-height:
 	@echo "$(BLUE)========================================$(NC)"
 	@./gradlew runCompareTest --quiet
 
+# Trouver une seed de village
+find-village-seed:
+	@echo "$(BLUE)========================================$(NC)"
+	@echo "$(BLUE)   Recherche de seed avec village      $(NC)"
+	@echo "$(BLUE)========================================$(NC)"
+	@./gradlew findVillageSeed --quiet
+
+# Comparer les pièces du village Java/C
+compare-village-pieces:
+	@echo "$(BLUE)========================================$(NC)"
+	@echo "$(BLUE)   Comparaison pièces village Java     $(NC)"
+	@echo "$(BLUE)========================================$(NC)"
+	@./gradlew compareVillagePieces --quiet
+
 # Test C
 test-c-height:
 	@echo "$(YELLOW)========================================$(NC)"
 	@echo "$(YELLOW)       Test C - SurfaceGen             $(NC)"
 	@echo "$(YELLOW)========================================$(NC)"
-	@cd c && $(MAKE) example-height
+	@cd c && $(MAKE) example_height
+
+# Test C avec la seed de village
+test-village-seed:
+	@echo "$(YELLOW)========================================$(NC)"
+	@echo "$(YELLOW)    Test C - Seed de village trouvée   $(NC)"
+	@echo "$(YELLOW)========================================$(NC)"
+	@cd c && $(MAKE) test_village_seed && ./test_village_seed
 
 # Exécuter les deux tests et comparer
 compare: clean-output

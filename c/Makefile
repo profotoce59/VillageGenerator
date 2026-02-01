@@ -1,10 +1,13 @@
 # ---- config ----
 CC              := gcc
+CXX             := g++
 CUBIOMES_DIR    := ../../cubiomes
 CFLAGS_COMMON   := -O2 -std=c11 -fwrapv -I$(CUBIOMES_DIR)
+CXXFLAGS_COMMON := -O2 -std=c++17 -fwrapv -I$(CUBIOMES_DIR)
 LIBS            := -lm
 TARGET          := monprog
 SRC             := block_height.c surface_gen.c cubiomes_integration.c
+CPP_SRC         := SurfaceGenWrapper.cpp TerrainGenerator.cpp VillageGenerator.cpp
 
 # Chemin du dépôt cubiomes depuis ce dossier
 
@@ -60,3 +63,21 @@ example_height: example_cubiomes_surface
 
 example_cubiomes_surface: example_cubiomes_surface.c surface_gen.c cubiomes_integration.c $(LIBCUBIOMES)
 	$(CC) $(CFLAGS_COMMON) $^ -o $@ $(LIBS)
+
+# Test du wrapper C++
+test_village_height: test_village_height.cpp SurfaceGenWrapper.cpp
+	$(CC) $(CFLAGS_COMMON) -c surface_gen.c -o surface_gen.o
+	$(CC) $(CFLAGS_COMMON) -c cubiomes_integration.c -o cubiomes_integration.o
+	$(CXX) $(CXXFLAGS_COMMON) test_village_height.cpp SurfaceGenWrapper.cpp surface_gen.o cubiomes_integration.o $(LIBCUBIOMES) -o $@ $(LIBS)
+
+# Test avec la seed de village trouvée en Java
+test_village_seed: test_village_seed.cpp SurfaceGenWrapper.cpp
+	$(CC) $(CFLAGS_COMMON) -c surface_gen.c -o surface_gen.o
+	$(CC) $(CFLAGS_COMMON) -c cubiomes_integration.c -o cubiomes_integration.o
+	$(CXX) $(CXXFLAGS_COMMON) test_village_seed.cpp SurfaceGenWrapper.cpp surface_gen.o cubiomes_integration.o $(LIBCUBIOMES) -o $@ $(LIBS)
+
+# Test de génération complète du village
+test_village_generation: test_village_generation.cpp SurfaceGenWrapper.cpp TerrainGenerator.cpp VillageGenerator.cpp BlockStructures.cpp ChunkRand.cpp VillagePools.cpp JigSawPool.cpp village_structure_size.cpp
+	$(CC) $(CFLAGS_COMMON) -c surface_gen.c -o surface_gen.o
+	$(CC) $(CFLAGS_COMMON) -c cubiomes_integration.c -o cubiomes_integration.o
+	$(CXX) $(CXXFLAGS_COMMON) test_village_generation.cpp SurfaceGenWrapper.cpp TerrainGenerator.cpp VillageGenerator.cpp BlockStructures.cpp ChunkRand.cpp VillagePools.cpp JigSawPool.cpp village_structure_size.cpp surface_gen.o cubiomes_integration.o $(LIBCUBIOMES) -o $@ $(LIBS)

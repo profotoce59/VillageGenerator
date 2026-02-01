@@ -1,6 +1,6 @@
 #pragma once
 
-#include "JigSawPools.hpp"
+#include "JigSawPool.hpp"
 #include <cstdint>
 #include <stdexcept>
 
