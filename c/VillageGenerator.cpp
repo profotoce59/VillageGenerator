@@ -1,16 +1,34 @@
 #include "VillageGenerator.hpp"
+#include <iostream>
 #include "VillagePools.hpp"
 #include "BlockRotation.hpp"
 #include "VoxelShape.hpp"
+#include "VillagePoolYMax.hpp"
 #include "Biome.hpp"
 #include "ChunkRand.hpp"
 #include "TerrainGenerator.hpp"
 #include "village_structure_size.hpp"
 #include "BiomeSource.hpp"
 #include "JigSawPool.hpp"
+#include "SurfaceGenWrapper.hpp"
 #include <algorithm>
 #include <stdexcept>
-#include <iostream>
+
+// JigsawBlocks data - inclure avant les headers générés
+struct JigsawBlockEntry {
+    PoolType poolType;
+    const char* jointName;
+    BlockDirection front;
+    BlockDirection top;
+    int16_t x, y, z;
+};
+#define JIGSAW_BLOCK_ENTRY_DEFINED
+
+#include "jigsaw/DesertVillageJigsawBlocks.hpp"
+#include "jigsaw/PlainsVillageJigsawBlock.hpp"
+#include "jigsaw/TaigaVillageJigsawBlocks.hpp"
+#include "jigsaw/SavannaVillageJigsawBlocks.hpp"
+#include "jigsaw/SnowyVillageJigsawBlocks.hpp"
 
 // Helper function to convert Biome type to Village type
 static VillageType biomeToVillageType(const Biome* biome) {
@@ -48,12 +66,7 @@ BlockRotation BlockRotationHelper::getRandom(ChunkRand& rand) {
 VillageGenerator::Piece::Piece(const std::string& name, const BPos& pos, const BlockBox& box,
                                 BlockRotation rotation, PlacementBehaviour behaviour, int depth)
     : name(name), pos(pos), box(box), rotation(rotation),
-      depth(depth), placementBehaviour(behaviour), voxelShape(nullptr) {
-    voxelShape = new VoxelShape(box);
-}
-
-VillageGenerator::Piece::~Piece() {
-    delete voxelShape;
+      depth(depth), placementBehaviour(behaviour) {
 }
 
 void VillageGenerator::Piece::move(int dx, int dy, int dz) {
@@ -65,77 +78,337 @@ BPos VillageGenerator::Piece::getTransformedPos(const BPos& relativePos) const {
     return BlockRotationHelper::rotate(relativePos, rotation);
 }
 
+// BlockJigsawInfo::canAttach15 – comme Java (direction opposée + même jointName)
+bool BlockJigsawInfo::canAttach15(const BlockJigsawInfo& other) const {
+    return BlockRotationHelper::getOpposite(other.front) == front
+        && jointName == other.jointName;
+}
+
+// BlockRotationHelper::getShuffled – Java BlockRotation.getShuffled(rand)
+std::vector<BlockRotation> BlockRotationHelper::getShuffled(ChunkRand& rand) {
+    std::vector<BlockRotation> rots = {
+        BlockRotation::NONE, BlockRotation::CLOCKWISE_90,
+        BlockRotation::CLOCKWISE_180, BlockRotation::COUNTERCLOCKWISE_90
+    };
+    rand.shuffle(rots);
+    return rots;
+}
+
+// Entrée jigsaw brute (template → liste (poolType, jointName, localPos, front))
+struct JigsawEntry {
+    PoolType poolType;
+    std::string jointName;
+    BPos localPos;
+    BlockDirection front;
+};
+
+static std::vector<JigsawEntry> getJigsawBlocksForTemplate(const std::string& name, VillageType villageType) {
+    const JigsawBlockEntry* data = nullptr;
+    size_t count = 0;
+    bool found = false;
+
+    switch (villageType) {
+        case VillageType::DESERT:
+            found = getDesertVillageJigsawBlocksFast(name, data, count);
+            break;
+        case VillageType::PLAINS:
+            found = getPlainsVillageJigsawBlockFast(name, data, count);
+            break;
+        case VillageType::TAIGA:
+            found = getTaigaVillageJigsawBlocksFast(name, data, count);
+            break;
+        case VillageType::SAVANNA:
+            found = getSavannaVillageJigsawBlocksFast(name, data, count);
+            break;
+        case VillageType::SNOWY:
+            found = getSnowyVillageJigsawBlocksFast(name, data, count);
+            break;
+        default:
+            break;
+    }
+
+    std::vector<JigsawEntry> out;
+    if (found && data) {
+        out.reserve(count);
+        for (size_t i = 0; i < count; i++) {
+            out.push_back({
+                data[i].poolType,
+                data[i].jointName,
+                BPos(data[i].x, data[i].y, data[i].z),
+                data[i].front
+            });
+        }
+    }
+    return out;
+}
+
+static std::vector<BlockJigsawInfo> getShuffledJigsawBlocks(
+    const VillageGenerator::Piece* piece, VillageType villageType, ChunkRand& rand)
+{
+    std::vector<JigsawEntry> entries = getJigsawBlocksForTemplate(piece->name, villageType);
+    std::vector<BlockJigsawInfo> list;
+    list.reserve(entries.size());
+    for (const auto& e : entries) {
+        BPos rotated = BlockRotationHelper::rotate(e.localPos, piece->rotation);
+        BPos worldPos = piece->pos.add(rotated.x, rotated.y, rotated.z);
+        BlockDirection worldFront = BlockRotationHelper::rotate(e.front, piece->rotation);
+        list.push_back({e.poolType, e.jointName, worldPos, worldFront});
+    }
+    rand.shuffle(list);
+    return list;
+}
+
+static PoolType getFallbackPoolType(VillageType villageType, PoolType jointType) {
+    (void)villageType;
+    switch (jointType) {
+        case PoolType::PLAIN_STREET:
+        case PoolType::PLAIN_HOUSES:
+        case PoolType::PLAIN_ZSTREET:
+        case PoolType::PLAIN_ZHOUSES:
+            return PoolType::PLAIN_TERMINATOR;
+        case PoolType::DESERT_STREET:
+        case PoolType::DESERT_HOUSES:
+            return PoolType::DESERT_TERMINATOR;
+        case PoolType::DESERT_ZSTREET:
+        case PoolType::DESERT_ZHOUSES:
+            return PoolType::DESERT_ZTERMINATOR;
+        case PoolType::TAIGA_STREET:
+        case PoolType::TAIGA_HOUSES:
+        case PoolType::TAIGA_ZSTREET:
+        case PoolType::TAIGA_ZHOUSES:
+            return PoolType::TAIGA_TERMINATOR;
+        case PoolType::SAVANNA_STREET:
+        case PoolType::SAVANNA_HOUSES:
+            return PoolType::SAVANNA_TERMINATOR;
+        case PoolType::SAVANNA_ZSTREET:
+        case PoolType::SAVANNA_ZHOUSES:
+            return PoolType::SAVANNA_ZTERMINATOR;
+        case PoolType::SNOWY_STREET:
+        case PoolType::SNOWY_HOUSES:
+        case PoolType::SNOWY_ZSTREET:
+        case PoolType::SNOWY_ZHOUSES:
+            return PoolType::SNOWY_TERMINATOR;
+        default:
+            return PoolType::EMPTY;
+    }
+}
+
+// Java isNotEmpty(mutableobject1, box3) → true si on peut placer
+// Vérifie: 1) la pièce est dans les bounds du village, 2) pas de collision
+static bool isNotEmpty(const VoxelShape* vs, const BlockBox& box) {
+    if (!vs || vs->isNull()) return true;
+
+    // Vérifier les bounds (comme Java: box doit être DANS le VoxelShape)
+    if (vs->hasBounds) {
+        if (box.minX < vs->bounds.minX || box.minY < vs->bounds.minY || box.minZ < vs->bounds.minZ ||
+            box.maxX >= vs->bounds.maxX || box.maxY >= vs->bounds.maxY || box.maxZ >= vs->bounds.maxZ) {
+            return false;
+        }
+    }
+
+    // Vérifier les collisions avec les pièces existantes
+    return !vs->intersects(box);
+}
+
 class VillageGenerator::Assembler {
 public:
     Assembler(int maxDepth, TerrainGenerator* generator, std::vector<std::unique_ptr<Piece>>& pieces,
-             bool useHeightMapOptimizer)
+             bool useHeightMapOptimizer, int heightY, VoxelShape* globalShape)
         : maxDepth(maxDepth), generator(generator), pieces(pieces),
-          useHeightMapOptimizer(useHeightMapOptimizer) {}
-          
+          useHeightMapOptimizer(useHeightMapOptimizer), heightY(heightY), globalShape(globalShape) {
+        if (useHeightMapOptimizer && generator) {
+            // Java: SurfaceGenerator2 dédié au heightMapOptimizer, avec startSizeY = heightY + 25
+            heightMapGen = std::make_unique<SurfaceGenWrapper>(generator->getWorldSeed(), 19);
+            heightMapGen->setStartSizeYExact(heightY + 25);
+        }
+    }
+
+    void addToPlacing(Piece* piece) { placing.push_back(piece); }
+
+    void run(VillageType villageType, ChunkRand& rand) {
+        while (!placing.empty()) {
+            Piece* p = placing.front();
+            placing.pop_front();
+            tryPlacing(villageType, p, rand, true);
+        }
+    }
+
     void tryPlacing(VillageType villageType, Piece* piece, ChunkRand& rand, bool expansionHack) {
-        // Obtenir le pool correspondant au type de village
+        const int depth = piece->depth;
+        const BPos pos = piece->pos;
+        const bool isRigid = (piece->placementBehaviour == PlacementBehaviour::RIGID);
+        const BlockBox& box = piece->box;
+        const int minY = box.minY;
+
         auto pool = createVillagePool(villageType);
         if (!pool) return;
 
-        // Pour chaque direction possible
-        for (int dir = 0; dir < 4; ++dir) {
-            BlockDirection direction = static_cast<BlockDirection>(dir);
-            
-            // Obtenir la position relative dans cette direction
-            BPos dirVector = BlockRotationHelper::getDirectionVector(direction);
-            BPos relativePos = piece->pos.add(
-                dirVector.x * 5,
-                dirVector.y * 5,
-                dirVector.z * 5
-            );
+        std::vector<BlockJigsawInfo> jigsawBlocks = getShuffledJigsawBlocks(piece, villageType, rand);
 
-            // Vérifier si on peut placer une pièce ici
-            if (canPlacePieceHere(relativePos, piece->box)) {
-                // Choisir une pièce aléatoire du pool approprié
-                PoolType poolType;
-                switch (dir) {
-                    case 0: poolType = PoolType::DESERT_HOUSES; break;  // Nord
-                    case 1: poolType = PoolType::DESERT_STREETS; break; // Sud
-                    case 2: poolType = PoolType::DESERT_DECOR; break;   // Est
-                    case 3: poolType = PoolType::DESERT_HOUSES; break;  // Ouest
-                    default: continue;
+        VoxelShape mutableobject;
+
+        for (const BlockJigsawInfo& blockJigsawInfo : jigsawBlocks) {
+            BlockDirection blockDirection = blockJigsawInfo.front;
+            BPos blockPos = blockJigsawInfo.pos;
+            BPos dirVec = BlockRotationHelper::getDirectionVector(blockDirection);
+            BPos relativeBlockPos(blockPos.x + dirVec.x, blockPos.y + dirVec.y, blockPos.z + dirVec.z);
+            int y = blockPos.y - minY;
+            int state = -1;
+
+            PoolType jointType = blockJigsawInfo.poolType;
+            auto mainTemplates = pool->getTemplates(jointType);
+            if (mainTemplates.empty()) continue;
+
+            PoolType fallbackType = getFallbackPoolType(villageType, jointType);
+            auto fallbackTemplates = pool->getTemplates(fallbackType);
+            if (fallbackTemplates.empty() && mainTemplates.empty()) continue;
+
+
+            bool isInside = box.contains(relativeBlockPos);
+            VoxelShape* mutableobject1;
+            if (isInside) {
+                mutableobject1 = &mutableobject;
+                if (mutableobject.isNull()) {
+                    mutableobject.setValue(box, true);
                 }
+            } else {
+                mutableobject1 = globalShape;
+            }
 
-                auto templates = pool->getTemplates(poolType);
-                if (templates.empty()) continue;
-
-                // Sélectionner un template aléatoire (for now, just pick randomly using nextInt)
-                if (templates.empty()) continue;
-                int idx = rand.nextInt(templates.size());
-                std::string templateName = templates[idx].name;
-                if (templateName.empty()) continue;
-
-                // Créer la nouvelle pièce
-                BlockRotation newRotation = BlockRotationHelper::getRandom(rand);
-                auto newBox = createBoundingBox(relativePos, newRotation, templateName);
-                
-                auto newPiece = std::make_unique<Piece>(
-                    templateName,
-                    relativePos,
-                    newBox,
-                    newRotation,
-                    pool->getPlacementBehaviour(),
-                    piece->depth + 1
-                );
-
-                // Vérifier la hauteur et les collisions
-                if (isValidPlacement(newPiece.get())) {
-                    pieces.push_back(std::move(newPiece));
+            std::vector<std::string> list;
+            if (depth != maxDepth && !mainTemplates.empty()) {
+                size_t total = 0;
+                for (const auto& t : mainTemplates) total += t.weight;
+                list.reserve(total);
+                for (const auto& t : mainTemplates) {
+                    for (int w = 0; w < t.weight; ++w) {
+                        list.push_back(t.name);
+                    }
+                }
+                if (!list.empty()) {
+                    rand.shuffle(list);
+                    rand.advance(1);
                 }
             }
+            if (!fallbackTemplates.empty()) {
+                std::vector<std::string> listtmp;
+                size_t total = 0;
+                for (const auto& t : fallbackTemplates) total += t.weight;
+                listtmp.reserve(total);
+                for (const auto& t : fallbackTemplates) {
+                    for (int w = 0; w < t.weight; ++w) {
+                        listtmp.push_back(t.name);
+                    }
+                }
+                if (!listtmp.empty()) {
+                    rand.shuffle(listtmp);
+                    rand.advance(1);
+                }
+                for (const auto& s : listtmp) list.push_back(s);
+            }
+                
+
+            for (const std::string& jigsawpiece1 : list) {
+                if (jigsawpiece1 == "empty") break;
+                auto rotations = BlockRotationHelper::getShuffled(rand);
+                for (BlockRotation rotation1 : rotations) {
+                    BPos size1;
+                    bool hasSize = get_bpos(jigsawpiece1.c_str(), &size1);
+                    BlockBox box1(0, 0, 0, 0, 0, 0);
+                    if (hasSize) box1 = BlockBox::getBoundingBox(BPos(0, 0, 0), rotation1, size1);
+                    VillageGenerator::Piece piece1(jigsawpiece1, BPos(0, 0, 0), box1, rotation1,
+                        pool->getPlacementBehaviour(jointType), 0);
+                    std::vector<BlockJigsawInfo> list1 = getShuffledJigsawBlocks(&piece1, villageType, rand);
+
+                    int i1 = 0;
+                    if (expansionHack && (box1.maxY - box1.minY) <= 16) {
+                        for (const auto& j : list1) {
+                            BPos d = BlockRotationHelper::getDirectionVector(j.front);
+                            BPos rel(j.pos.x + d.x, j.pos.y + d.y, j.pos.z + d.z);
+                            if (box1.contains(rel)) {
+                                i1 = std::max(i1, getPoolYMax(j.poolType));
+                            }
+                        }
+                    }
+
+                    for (const BlockJigsawInfo& blockJigsawInfo2 : list1) {
+                        bool canAttach = blockJigsawInfo.canAttach15(blockJigsawInfo2);
+                        if (!canAttach) continue;
+
+                        BPos blockPos3 = blockJigsawInfo2.pos;
+                        BPos blockPos4(relativeBlockPos.x - blockPos3.x,
+                                       relativeBlockPos.y - blockPos3.y,
+                                       relativeBlockPos.z - blockPos3.z);
+                        BlockBox box2(blockPos4.x, blockPos4.y, blockPos4.z,
+                                      blockPos4.x, blockPos4.y, blockPos4.z);
+                        if (hasSize)
+                            box2 = BlockBox::getBoundingBox(blockPos4, rotation1, size1);
+                        int j1 = box2.minY;
+                        bool flag2 = (pool->getPlacementBehaviour(jointType) == PlacementBehaviour::RIGID);
+                        int k1 = blockPos3.y;
+                        int l1 = y - k1 + dirVec.y;
+                        int i2;
+                        if (isRigid && flag2) {
+                            i2 = minY + l1;
+                        } else {
+                            if (state == -1) {
+                                int hm = -1;
+                                int fh = -1;
+                                if (useHeightMapOptimizer && heightMapGen) {
+                                    hm = heightMapGen->getHeightOnGround(blockPos.x, blockPos.z);
+                                    state = hm;
+                                } else {
+                                    fh = generator->getFirstHeightInColumn(blockPos.x, blockPos.z, nullptr);
+                                    state = fh;
+                                }
+                                // Log systématique pour comparer la source du Y
+                                // logs temporaires retirés
+                            
+                            }
+                            i2 = state - k1;
+                        }
+                        int j2 = i2 - j1;
+                        BlockBox box3(box2.minX, box2.minY, box2.minZ, box2.maxX, box2.maxY, box2.maxZ);
+                        box3.move(0, j2, 0);
+                        BPos blockpos5(blockPos4.x, blockPos4.y + j2, blockPos4.z);
+                        if (i1 > 0) {
+                            int k2 = std::max(i1 + 1, box3.maxY - box3.minY);
+                            box3.maxY = box3.minY + k2;
+                        }
+
+                        bool ok = isNotEmpty(mutableobject1, box3);
+                        if (!ok) continue;
+
+
+                        // Java: mutableobject1.fullBoxes.add(new BlockBox(...))
+                        mutableobject1->addCollision(BlockBox(box3.minX, box3.minY, box3.minZ,
+                                                             box3.maxX + 1, box3.maxY + 1, box3.maxZ + 1));
+                        auto newPiece = std::make_unique<Piece>(
+                            jigsawpiece1, blockpos5, box3, rotation1,
+                            pool->getPlacementBehaviour(jointType), depth + 1
+                        );
+                        if (depth + 1 <= maxDepth) {
+                            pieces.push_back(std::move(newPiece));
+                            placing.push_back(pieces.back().get());
+                        }
+                        
+                        goto next_jigsaw_block;
+                    }
+                }
+
+            }
+            next_jigsaw_block:;
         }
     }
-    
+
 private:
     int maxDepth;
     TerrainGenerator* generator;
     std::vector<std::unique_ptr<Piece>>& pieces;
     bool useHeightMapOptimizer;
+    int heightY;
+    VoxelShape* globalShape;  // VoxelShape partagé par toutes les pièces
+    std::unique_ptr<SurfaceGenWrapper> heightMapGen;
     std::deque<Piece*> placing;
 
     std::string selectRandomTemplate(const std::vector<TemplateEntry>& templates, std::mt19937_64& rng) {
@@ -152,11 +425,9 @@ private:
     }
 
     bool isValidPlacement(const Piece* piece) const {
-        // Vérifier les collisions avec les pièces existantes
-        for (const auto& existingPiece : pieces) {
-            if (piece->voxelShape && piece->voxelShape->intersects(existingPiece->box)) {
-                return false;
-            }
+        // Vérifier les collisions avec le VoxelShape global
+        if (globalShape && globalShape->intersects(piece->box)) {
+            return false;
         }
 
         // Vérifier la hauteur du terrain
@@ -194,16 +465,19 @@ bool VillageGenerator::generate(TerrainGenerator* generator, int chunkX, int chu
 
     // 2) Seed rotation the Minecraft way
     rand.setCarverSeed(generator->getWorldSeed(), chunkX, chunkZ);
-    BlockRotation rotation = BlockRotationHelper::getRandom(rand);
 
-    // 3) Get start pool for this village type
-    // For now, create a simple desert town center as placeholder
-    // TODO: Use STARTS map when it's properly defined
-    std::string templateName = "desert/town_centers/desert_meeting_point_2";
+    int rotationInt = rand.nextInt(4);
+    BlockRotation rotation = static_cast<BlockRotation>(rotationInt);
 
-    // 4) Template size and world-space bounding box
+    // 3) Get start pool and pick template (like Java: STARTS.get(villageType), rand.getRandom(...))
+    auto it = STARTS.find(villageType);
+    if (it == STARTS.end()) return false;
+    std::string templateName(rand.getRandom(it->second));
+    if (templateName.empty()) return false;
+
+    // 4) Template size and world-space bounding box (STRUCTURE_SIZE.get(template))
     BPos size;
-    get_bpos(templateName.c_str(), &size);
+    if (!get_bpos(templateName.c_str(), &size)) return false;
 
     BPos bPos = BPos::fromChunk(chunkX, 0, chunkZ);
     BlockBox box = BlockBox::getBoundingBox(bPos, rotation, size);
@@ -216,31 +490,30 @@ bool VillageGenerator::generate(TerrainGenerator* generator, int chunkX, int chu
     int y = bPos.y + heightY;
     int centerY = box.minY + 1;
 
-    // DEBUG: Print height calculation details
-    std::cout << "DEBUG Height Calculation:" << std::endl;
-    std::cout << "  centerX, centerZ: " << centerX << ", " << centerZ << std::endl;
-    std::cout << "  heightY (from getHeightOnGround): " << heightY << std::endl;
-    std::cout << "  bPos.y: " << bPos.y << std::endl;
-    std::cout << "  y (bPos.y + heightY): " << y << std::endl;
-    std::cout << "  Initial box.minY: " << box.minY << std::endl;
-    std::cout << "  centerY (box.minY + 1): " << centerY << std::endl;
-    std::cout << "  Movement delta (y - centerY): " << (y - centerY) << std::endl;
-
     // 6) First piece (always RIGID), moved to Y
     auto piece = std::make_unique<Piece>(
         templateName, bPos, box, rotation, PlacementBehaviour::RIGID, /*depth=*/0
     );
     piece->move(0, y - centerY, 0);
+    piece->setBoundsTop(y + 80);
 
-    std::cout << "  Final piece pos.y: " << piece->pos.y << std::endl;
-    std::cout << "  Final box.minY: " << piece->box.minY << std::endl;
+    // 7) VoxelShape global: fullBox is the bounds (pieces must be INSIDE), pieceBox is the collision
+    // Ce VoxelShape est partagé par toutes les pièces (comme en Java)
+    BlockBox fullBox(centerX - 80, y - 80, centerZ - 80,
+                     centerX + 80 + 1, y + 80 + 1, centerZ + 80 + 1);
+    VoxelShape globalShape;
+    globalShape.setBounds(fullBox);  // Bounds = limite externe
+    // Java: a.fullBoxes.add(new BlockBox(box.minX,box.minY,box.minZ,box.maxX+1,box.maxY+1,box.maxZ+1));
+    globalShape.addCollision(BlockBox(
+        piece->box.minX, piece->box.minY, piece->box.minZ,
+        piece->box.maxX + 1, piece->box.maxY + 1, piece->box.maxZ + 1));
 
-    // 7) Configure assembler and generate village
     pieces.push_back(std::move(piece));
 
-    // TODO: Actually run the assembler to add more pieces
-    // Assembler assembler(6, generator, pieces, useHeightMapOptimizer);
-    // assembler.tryPlacing(villageType, pieces[0].get(), rand, true);
+    // 8) Assembler: add first piece to placing, then run until queue empty
+    Assembler assembler(6, generator, pieces, useHeightMapOptimizer, heightY, &globalShape);
+    assembler.addToPlacing(pieces[0].get());
+    assembler.run(villageType, rand);
 
     generated = true;
     return true;

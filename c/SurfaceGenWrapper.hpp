@@ -45,6 +45,25 @@ public:
      */
     int getHeightOnGround(int x, int z);
 
+    /**
+     * Calcule la hauteur en scannant toute la colonne (startSizeY = noiseSizeY).
+     * Utile pour reproduire getFirstHeightInColumn Java (non limité par startSizeY).
+     */
+    int getFirstHeightFull(int x, int z);
+
+    /**
+     * Debug ciblé: imprime depth/scale, randomOffset, startSizeY/noiseSizeY
+     * et la colonne de bruit pour un range de y (indices de noise column).
+     */
+    void debugPrintNoiseColumn(int x, int z, int yStart, int yEnd);
+
+    /**
+     * Ajuste startSizeY (en blocs, comme Java: heightY + 25).
+     * La valeur est convertie en cellules (division par 8) et ne peut que monter.
+     */
+    void setStartSizeY(int startSizeYBlocks);
+    void setStartSizeYExact(int startSizeYBlocks);
+
     // Getter pour accès direct au SurfaceGen (pour tests)
     SurfaceGen* getSurfaceGen() { return sg; }
 

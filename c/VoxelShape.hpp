@@ -6,26 +6,51 @@
 // Classe pour gérer les collisions entre les pièces du village
 class VoxelShape {
 public:
-    VoxelShape() = default;
-    explicit VoxelShape(const BlockBox& box) {
-        setValue(box, true);
+    VoxelShape() : bounds(0,0,0,0,0,0), hasBounds(false) {}
+
+    // Constructeur avec bounds (limite externe du village)
+    explicit VoxelShape(const BlockBox& bounds) : bounds(bounds), hasBounds(true) {}
+
+    // Définir les limites externes (la pièce doit être DANS cette zone)
+    void setBounds(const BlockBox& b) {
+        bounds = b;
+        hasBounds = true;
     }
 
-    // Ajouter une boîte de collision
+    // Java: setValue sets the bounds (xs, ys, zs), NOT the fullBoxes
+    // xs = [box.minX, box.maxX+1], etc.
     void setValue(const BlockBox& box, bool value) {
         if (value) {
-            fullBoxes.push_back(box);
+            // Set bounds with +1 on max values (like Java)
+            bounds = BlockBox(box.minX, box.minY, box.minZ,
+                             box.maxX + 1, box.maxY + 1, box.maxZ + 1);
+            hasBounds = true;
         }
     }
 
-    // Vérifier si une boîte est en collision avec la forme
+    // Ajouter une boîte de collision (pièce placée) - Java: fullBoxes.add()
+    void addCollision(const BlockBox& box) {
+        fullBoxes.push_back(box);
+    }
+
+    // Vérifier si une boîte est en collision avec les pièces existantes
+    // ET si elle est dans les limites du village
     bool intersects(const BlockBox& box) const {
-        for (const auto& fullBox : fullBoxes) {
-            if (doBoxesIntersect(box, fullBox)) {
+        // Vérifie collision avec les pièces existantes
+        for (const auto& placed : fullBoxes) {
+            if (doBoxesIntersect(box, placed)) {
                 return true;
             }
         }
         return false;
+    }
+
+    // Vérifie si la box est dans les limites du village
+    bool isWithinBounds(const BlockBox& box) const {
+        if (!hasBounds) return true;
+        return box.minX >= bounds.minX && box.maxX <= bounds.maxX &&
+               box.minY >= bounds.minY && box.maxY <= bounds.maxY &&
+               box.minZ >= bounds.minZ && box.maxZ <= bounds.maxZ;
     }
 
     // Obtenir les limites de la forme
@@ -80,11 +105,14 @@ public:
         return maxZ;
     }
 
+    // Java: isNull() checks if xs (bounds) is null, NOT fullBoxes
     bool isNull() const {
-        return fullBoxes.empty();
+        return !hasBounds;
     }
 
     std::vector<BlockBox> fullBoxes;
+    BlockBox bounds;
+    bool hasBounds;
 
 private:
     // Vérifier si deux boîtes se chevauchent

@@ -1,5 +1,3 @@
-#pragma once
-
 #include "village_structure_size.hpp" 
 #include <stdio.h>
 #include <string.h>

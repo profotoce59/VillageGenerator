@@ -25,6 +25,7 @@ public:
     // Terrain generation methods
     virtual int getFirstHeightInColumn(int x, int z, std::function<bool(void*)> predicate) = 0;
     virtual int getHeightOnGround(int x, int z) = 0;
+    virtual void setHeightMapStartSizeY(int startSizeYBlocks) { (void)startSizeYBlocks; }
     
     // Utility methods
     virtual std::vector<void*> getColumnBlocks(int x, int z) = 0;
@@ -42,6 +43,7 @@ public:
 
     int getFirstHeightInColumn(int x, int z, std::function<bool(void*)> predicate) override;
     int getHeightOnGround(int x, int z) override;
+    void setHeightMapStartSizeY(int startSizeYBlocks) override;
     std::vector<void*> getColumnBlocks(int x, int z) override;
     bool canGenerate(int chunkX, int chunkZ) const override;
 

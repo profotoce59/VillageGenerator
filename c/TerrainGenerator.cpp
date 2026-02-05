@@ -30,18 +30,25 @@ int OverworldTerrainGenerator::getFirstHeightInColumn(int x, int z, std::functio
     // Pour simplifier, on utilise directement la fonction C avec un prédicat simple
     // TODO: Si besoin d'un prédicat personnalisé, créer un wrapper
 
-    if (!predicate) {
-        // Pas de prédicat spécifique, utiliser le défaut (premier bloc non-air)
-        return surfaceGen->getHeightOnGround(x, z);
+    // Reproduire Java: scan complet de la colonne (startSizeY = noiseSizeY)
+    int h = surfaceGen->getFirstHeightFull(x, z);
+    // Java renvoie au moins le sea level (eau) quand predicate = non-air
+    if (h < seaLevel) {
+        h = seaLevel;
     }
-
-    // Pour l'instant, utiliser le prédicat par défaut
-    // Une implémentation plus complète nécessiterait de wrapper le std::function en BlockPredicate C
-    return surfaceGen->getHeightOnGround(x, z);
+    // Pour l'instant, on ignore le prédicat personnalisé (comme avant)
+    (void)predicate;
+    return h;
 }
 
 int OverworldTerrainGenerator::getHeightOnGround(int x, int z) {
     return surfaceGen->getHeightOnGround(x, z);
+}
+
+void OverworldTerrainGenerator::setHeightMapStartSizeY(int startSizeYBlocks) {
+    if (surfaceGen) {
+        surfaceGen->setStartSizeY(startSizeYBlocks);
+    }
 }
 
 std::vector<void*> OverworldTerrainGenerator::getColumnBlocks(int x, int z) {

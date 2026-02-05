@@ -3,6 +3,8 @@
 #include "JigSawPool.hpp"
 #include <cstdint>
 #include <stdexcept>
+#include <utility>
+#include <vector>
 
 
 class ChunkRand {
@@ -24,8 +26,21 @@ public:
     // Avance de n tirages "next(32)" (approx) – utile si tu veux skipper
     void advance(int count);
     // Équivalent de Java: rand.getRandom(jigSawPool.getTemplates())
-    // Tire uniformément dans la "liste étendue" (index_flat) -> mêmes proba qu’en Java
+    // Tire uniformément dans la "liste étendue" (index_flat) -> mêmes proba qu'en Java
     std::string_view getRandom(const JigSawPool& pool);
+
+    // Pour le débogage: obtenir la seed interne
+    uint64_t getSeed() const { return seed48; }
+
+    // Équivalent de Java: Collections.shuffle(list, rand)
+    template<typename T>
+    void shuffle(std::vector<T>& vec) {
+        for (size_t i = vec.size(); i > 1; ) {
+            size_t j = static_cast<size_t>(nextInt(static_cast<int32_t>(i)));
+            --i;
+            if (i != j) std::swap(vec[i], vec[j]);
+        }
+    }
 
 private:
     // état interne 48 bits

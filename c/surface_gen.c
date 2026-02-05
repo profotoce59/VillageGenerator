@@ -106,7 +106,7 @@ void sample_noise_column(SurfaceGen *sg, double *buffer, int x, int z)
     }
 
     // LOG: paramètres pour position test
-    int enableLogs = (x == 20121 && z == 20185);
+    int enableLogs = 0;  // Désactivé pour les tests de pièces
     if (enableLogs) {
         printf("\n=== C sample_noise_column ===\n");
         printf("Position: x=%d, z=%d\n", x, z);
@@ -194,7 +194,7 @@ int generate_column_from_y(SurfaceGen *sg, int x, int z,
                            BlockPredicate predicate, void *user)
 {
     // LOG: Activer uniquement pour position de test
-    int enableLogs = (x == 80485 && z == 80741);
+    int enableLogs = 0;  // Désactivé pour les tests de pièces
     if (enableLogs) {
         printf("--- C generate_column_from_y ---\n");
         printf("Position: (%d, %d)\n", x, z);
@@ -267,10 +267,11 @@ int generate_column_from_y(SurfaceGen *sg, int x, int z,
             int y = cellY * sg->chunkHeight + posY;
             Block block = get_block_from_noise(noise, y, user);
 
-            // LOG: Détails pour Y autour de 68-76
-            
-            printf("  cellY=%d, posY=%d, y=%d, percentY=%.4f, noise=%.6f, block=%d\n",
-                       cellY, posY, y, percentY, noise, block);
+            // LOG désactivé pour les tests de pièces
+            // if (enableLogs) {
+            //     printf("  cellY=%d, posY=%d, y=%d, percentY=%.4f, noise=%.6f, block=%d\n",
+            //                cellY, posY, y, percentY, noise, block);
+            // }
             
 
             // Test du prédicat

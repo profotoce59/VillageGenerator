@@ -69,8 +69,8 @@ void setup_surface_gen_with_cubiomes(SurfaceGen *sg, CubiomesContext *ctx) {
 void cubiomes_get_depth_and_scale(int x, int z, double out2[2], void *user) {
     CubiomesContext *ctx = (CubiomesContext*)user;
 
-    // Debug pour position test
-    int enableLogs = (x == 20121 && z == 20185);
+    // Debug désactivé pour les tests de pièces
+    int enableLogs = 0;  // Mettre à 1 pour débugger la hauteur
 
     const int sampleRange = 2;
     double weightedScale = 0.0;

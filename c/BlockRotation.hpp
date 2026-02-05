@@ -1,6 +1,7 @@
 #pragma once
 
 #include <random>
+#include <vector>
 #include "BlockStructures.hpp"
 
 // Direction d'un bloc
@@ -54,12 +55,30 @@ public:
             return dir;
         }
 
-        int index = static_cast<int>(dir);
-        int rotation = static_cast<int>(rot);
-        
-        // Calcul de la nouvelle direction après rotation
-        index = (index + rotation) % 4;
-        return static_cast<BlockDirection>(index);
+        // Mapping explicite pour coller au comportement Java (mc_core)
+        switch (rot) {
+            case BlockRotation::CLOCKWISE_90:
+                switch (dir) {
+                    case BlockDirection::NORTH: return BlockDirection::EAST;
+                    case BlockDirection::EAST:  return BlockDirection::SOUTH;
+                    case BlockDirection::SOUTH: return BlockDirection::WEST;
+                    case BlockDirection::WEST:  return BlockDirection::NORTH;
+                    default: return dir;
+                }
+            case BlockRotation::CLOCKWISE_180:
+                return getOpposite(dir);
+            case BlockRotation::COUNTERCLOCKWISE_90:
+                switch (dir) {
+                    case BlockDirection::NORTH: return BlockDirection::WEST;
+                    case BlockDirection::WEST:  return BlockDirection::SOUTH;
+                    case BlockDirection::SOUTH: return BlockDirection::EAST;
+                    case BlockDirection::EAST:  return BlockDirection::NORTH;
+                    default: return dir;
+                }
+            case BlockRotation::NONE:
+            default:
+                return dir;
+        }
     }
 
     // Rotation d'une position
@@ -90,4 +109,20 @@ public:
             default: return BPos(0, 0, 0);
         }
     }
+
+    // Direction opposée (pour canAttach15)
+    static BlockDirection getOpposite(BlockDirection dir) {
+        switch (dir) {
+            case BlockDirection::NORTH: return BlockDirection::SOUTH;
+            case BlockDirection::SOUTH: return BlockDirection::NORTH;
+            case BlockDirection::EAST: return BlockDirection::WEST;
+            case BlockDirection::WEST: return BlockDirection::EAST;
+            case BlockDirection::UP: return BlockDirection::DOWN;
+            case BlockDirection::DOWN: return BlockDirection::UP;
+            default: return dir;
+        }
+    }
+
+    // Rotations dans un ordre aléatoire (Java BlockRotation.getShuffled(rand))
+    static std::vector<BlockRotation> getShuffled(ChunkRand& rand);
 }; 

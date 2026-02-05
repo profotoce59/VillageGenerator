@@ -31,36 +31,88 @@ enum class PlacementBehaviour {
 
 enum class PoolType {
     // Centres de village
-    DESERT_CENTER,
+    ANIMALS,
+    SHEEPS,
+    CATS,
+    BUTCHER_ANIMAL,
+    IRON_GOLEM,
+    WELL_BOTTOM,
+    EMPTY,
+
     PLAIN_CENTER,
-    TAIGA_CENTER,
-    SAVANNA_CENTER,
-    SNOWY_CENTER,
-
-    // Maisons
-    DESERT_HOUSES,
+    PLAIN_STREET,
+    PLAIN_ZSTREET,
     PLAIN_HOUSES,
-    TAIGA_HOUSES,
-    SAVANNA_HOUSES,
-    SNOWY_HOUSES,
-
-    // Rues
-    DESERT_STREETS,
-    PLAIN_STREETS,
-    TAIGA_STREETS,
-    SAVANNA_STREETS,
-    SNOWY_STREETS,
-
-    // Décorations
-    DESERT_DECOR,
+    PLAIN_ZHOUSES,
     PLAIN_DECOR,
+    PLAIN_ZDECOR,
+    PLAIN_VILLAGER,
+    PLAIN_ZVILLAGER,
+    PLAIN_TERMINATOR,
+    PLAIN_TREE,
+
+    DESERT_CENTER,
+    DESERT_STREET,
+    DESERT_ZSTREET,
+    DESERT_HOUSES,
+    DESERT_ZHOUSES,
+    DESERT_DECOR,
+    DESERT_ZDECOR,
+    DESERT_VILLAGER,
+    DESERT_ZVILLAGER,
+    DESERT_TERMINATOR,
+    DESERT_ZTERMINATOR,
+
+    TAIGA_CENTER,
+    TAIGA_STREET,
+    TAIGA_ZSTREET,
+    TAIGA_HOUSES,
+    TAIGA_ZHOUSES,
     TAIGA_DECOR,
+    TAIGA_ZDECOR,
+    TAIGA_VILLAGER,
+    TAIGA_ZVILLAGER,
+    TAIGA_TERMINATOR,
+
+
+    SAVANNA_CENTER,
+    SAVANNA_STREET,
+    SAVANNA_ZSTREET,
+    SAVANNA_HOUSES,
+    SAVANNA_ZHOUSES,
     SAVANNA_DECOR,
-    SNOWY_DECOR
+    SAVANNA_ZDECOR,
+    SAVANNA_VILLAGER,
+    SAVANNA_ZVILLAGER,
+    SAVANNA_TERMINATOR,
+    SAVANNA_ZTERMINATOR,
+    SAVANNA_TREE,
+
+    SNOWY_CENTER,
+    SNOWY_STREET,
+    SNOWY_ZSTREET,
+    SNOWY_HOUSES,
+    SNOWY_ZHOUSES,
+    SNOWY_DECOR,
+    SNOWY_ZDECOR,
+    SNOWY_VILLAGER,
+    SNOWY_ZVILLAGER,
+    SNOWY_TERMINATOR,
+    SNOWY_TREE,
 };
 
 // Forward declaration for VoxelShape
 class VoxelShape;
+
+// Info d'un bloc jigsaw (point d'attache) – comme Java BlockJigsawInfo
+struct BlockJigsawInfo {
+    PoolType poolType;
+    std::string jointName;
+    BPos pos;           // position monde (après rotation + offset)
+    BlockDirection front;
+
+    bool canAttach15(const BlockJigsawInfo& other) const;
+};
 
 // Main VillageGenerator class
 class VillageGenerator {
@@ -74,13 +126,14 @@ public:
         BlockRotation rotation;
         int depth;
         PlacementBehaviour placementBehaviour;
-        VoxelShape* voxelShape;
+        int boundsTop = 0;
 
         Piece(const std::string& name, const BPos& pos, const BlockBox& box,
               BlockRotation rotation, PlacementBehaviour behaviour, int depth);
-        ~Piece();
+        ~Piece() = default;
 
         void move(int dx, int dy, int dz);
+        void setBoundsTop(int y) { boundsTop = y; }
         BPos getTransformedPos(const BPos& relativePos) const;
     };
 
