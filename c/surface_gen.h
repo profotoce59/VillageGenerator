@@ -73,6 +73,12 @@ struct SurfaceGen_s {
     double (*sample_noise_2d)(int x, int z, void *user);
 
     void *user; // pointeur libre pour passer un contexte à tes hooks
+
+    // cache per-instance (initialisé à la demande)
+    void *cache;
+    size_t cache_capacity;
+    size_t cache_hits;
+    size_t cache_misses;
 };
 
 // utilitaires
@@ -89,6 +95,18 @@ const double* sample_noise_column_cached(SurfaceGen *sg, int x, int z);
 
 // libère le cache (si utilisé)
 void free_surface_cache(SurfaceGen *sg);
+
+// stats cache (globales au process)
+void reset_surface_cache_stats(SurfaceGen *sg);
+void get_surface_cache_stats(SurfaceGen *sg, size_t *hits, size_t *misses);
+
+// profiling
+void reset_surface_profile_stats(SurfaceGen *sg);
+void get_surface_profile_stats(SurfaceGen *sg,
+    uint64_t *ns_sample_noise_column,
+    uint64_t *ns_sample_noise_3d,
+    uint64_t *ns_sample_noise_2d,
+    uint64_t *ns_get_depth_and_scale);
 
 #ifdef __cplusplus
 }

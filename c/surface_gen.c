@@ -4,6 +4,7 @@
 #include <string.h>
 #include <math.h>
 #include <stdio.h>  // Pour printf (logs de debug)
+#include <time.h>
 
 // ---------- utils ----------
 double clamped_lerp(double a, double b, double t) {
@@ -17,92 +18,254 @@ double clamped_lerp(double a, double b, double t) {
 #include "rng.h"
 
 // ---------- cache (optionnel, simple chaîné) ----------
-typedef struct CacheNode {
-    uint64_t key;
-    double  *col; // length = noiseSizeY+1
-    struct CacheNode *next;
-} CacheNode;
-
 static uint64_t pack_key(int x, int z) {
     return ( (uint64_t)( (uint32_t)x ) << 32 ) | (uint64_t)( (uint32_t)z );
 }
 
 typedef struct {
-    CacheNode *head;
+    uint64_t key;
+    double *col; // length = noiseSizeY+1
+    int in_use;
+    int next;       // bucket chain
+    int prev_fifo;  // FIFO list
+    int next_fifo;
+} CacheEntry;
+
+typedef struct {
+    CacheEntry *entries;
+    double *columns;
+    size_t capacity;
+    size_t bucket_count;
+    int *buckets;
+    int free_head;
+    int fifo_head;
+    int fifo_tail;
     size_t count;
-    size_t limit; // nb max d'entrées, ex: 4096
+
+    uint64_t ns_sample_noise_column;
+    uint64_t ns_sample_noise_3d;
+    uint64_t ns_sample_noise_2d;
+    uint64_t ns_get_depth_and_scale;
 } SurfaceCache;
 
+static inline uint64_t now_ns(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+
+static size_t next_pow2(size_t v) {
+    size_t p = 1;
+    while (p < v) p <<= 1;
+    return p;
+}
+
 static SurfaceCache* get_cache(SurfaceGen *sg) {
-    // on range le cache dans sg->user si tu veux autre chose, adapte à ton infra
-    // pour l’exemple on alloue un cache statique par process:
-    static SurfaceCache *C = NULL;
-    if (!C) {
-        C = (SurfaceCache*)calloc(1, sizeof(SurfaceCache));
-        C->limit = 4096;
+    if (!sg) return NULL;
+    if (sg->cache) return (SurfaceCache*)sg->cache;
+    size_t cap = sg->cache_capacity ? sg->cache_capacity : 4096;
+    cap = next_pow2(cap);
+    SurfaceCache *C = (SurfaceCache*)calloc(1, sizeof(SurfaceCache));
+    if (!C) return NULL;
+    C->capacity = cap;
+    C->bucket_count = next_pow2(cap * 2);
+    C->entries = (CacheEntry*)calloc(cap, sizeof(CacheEntry));
+    if (!C->entries) {
+        free(C);
+        return NULL;
     }
-    (void)sg;
+    size_t len = (size_t)sg->noiseSizeY + 1;
+    C->columns = (double*)calloc(cap * len, sizeof(double));
+    if (!C->columns) {
+        free(C->entries);
+        free(C);
+        return NULL;
+    }
+    C->buckets = (int*)calloc(C->bucket_count, sizeof(int));
+    if (!C->buckets) {
+        free(C->columns);
+        free(C->entries);
+        free(C);
+        return NULL;
+    }
+    for (size_t i = 0; i < C->bucket_count; i++) {
+        C->buckets[i] = -1;
+    }
+    for (size_t i = 0; i < cap; i++) {
+        C->entries[i].col = C->columns + i * len;
+        C->entries[i].in_use = 0;
+        C->entries[i].next = (i + 1 < cap) ? (int)(i + 1) : -1;
+        C->entries[i].prev_fifo = -1;
+        C->entries[i].next_fifo = -1;
+    }
+    C->free_head = 0;
+    C->fifo_head = -1;
+    C->fifo_tail = -1;
+    C->count = 0;
+    sg->cache = C;
     return C;
 }
 
 static const double* cache_get(SurfaceGen *sg, uint64_t key) {
     SurfaceCache *C = get_cache(sg);
-    for (CacheNode *n = C->head; n; n = n->next) {
-        if (n->key == key) return n->col;
+    if (!C) return NULL;
+    size_t mask = C->bucket_count - 1;
+    size_t b = mask ? (size_t)(key & mask) : 0;
+    int idx = C->buckets[b];
+    while (idx != -1) {
+        CacheEntry *e = &C->entries[idx];
+        if (e->key == key) {
+            sg->cache_hits++;
+            return e->col;
+        }
+        idx = e->next;
     }
+    sg->cache_misses++;
     return NULL;
+}
+
+static void remove_from_bucket(SurfaceCache *C, uint64_t key, int entry_idx) {
+    size_t mask = C->bucket_count - 1;
+    size_t b = mask ? (size_t)(key & mask) : 0;
+    int cur = C->buckets[b];
+    int prev = -1;
+    while (cur != -1) {
+        if (cur == entry_idx) {
+            if (prev == -1) {
+                C->buckets[b] = C->entries[cur].next;
+            } else {
+                C->entries[prev].next = C->entries[cur].next;
+            }
+            return;
+        }
+        prev = cur;
+        cur = C->entries[cur].next;
+    }
 }
 
 static void cache_put(SurfaceGen *sg, uint64_t key, const double *src, int len) {
     SurfaceCache *C = get_cache(sg);
-    // limite grossière: si trop d'entrées, on drop la tête
-    if (C->count >= C->limit && C->head) {
-        CacheNode *drop = C->head;
-        C->head = drop->next;
-        free(drop->col);
-        free(drop);
-        C->count--;
+    if (!C) return;
+    size_t mask = C->bucket_count - 1;
+    size_t b = mask ? (size_t)(key & mask) : 0;
+    int idx = C->buckets[b];
+    while (idx != -1) {
+        CacheEntry *e = &C->entries[idx];
+        if (e->key == key) {
+            memcpy(e->col, src, sizeof(double) * (size_t)len);
+            return;
+        }
+        idx = e->next;
     }
-    CacheNode *n = (CacheNode*)malloc(sizeof(CacheNode));
-    n->key = key;
-    n->col = (double*)malloc(sizeof(double) * len);
-    memcpy(n->col, src, sizeof(double) * len);
-    n->next = C->head;
-    C->head = n;
-    C->count++;
+
+    int entry_idx = -1;
+    if (C->free_head != -1) {
+        entry_idx = C->free_head;
+        C->free_head = C->entries[entry_idx].next;
+    } else if (C->fifo_head != -1) {
+        // evict FIFO head
+        entry_idx = C->fifo_head;
+        CacheEntry *old = &C->entries[entry_idx];
+        remove_from_bucket(C, old->key, entry_idx);
+        C->fifo_head = old->next_fifo;
+        if (C->fifo_head != -1) {
+            C->entries[C->fifo_head].prev_fifo = -1;
+        } else {
+            C->fifo_tail = -1;
+        }
+    }
+
+    if (entry_idx == -1) return;
+
+    CacheEntry *e = &C->entries[entry_idx];
+    e->key = key;
+    e->in_use = 1;
+    e->next = C->buckets[b];
+    C->buckets[b] = entry_idx;
+    memcpy(e->col, src, sizeof(double) * (size_t)len);
+
+    // append to FIFO tail
+    e->prev_fifo = C->fifo_tail;
+    e->next_fifo = -1;
+    if (C->fifo_tail != -1) {
+        C->entries[C->fifo_tail].next_fifo = entry_idx;
+    } else {
+        C->fifo_head = entry_idx;
+    }
+    C->fifo_tail = entry_idx;
 }
 
 void free_surface_cache(SurfaceGen *sg) {
+    if (!sg || !sg->cache) return;
+    SurfaceCache *C = (SurfaceCache*)sg->cache;
+    free(C->columns);
+    free(C->entries);
+    free(C->buckets);
+    free(C);
+    sg->cache = NULL;
+    sg->cache_hits = 0;
+    sg->cache_misses = 0;
+}
+
+void reset_surface_cache_stats(SurfaceGen *sg) {
+    if (!sg) return;
+    sg->cache_hits = 0;
+    sg->cache_misses = 0;
+}
+
+void get_surface_cache_stats(SurfaceGen *sg, size_t *hits, size_t *misses) {
+    if (!sg) return;
+    if (hits) *hits = sg->cache_hits;
+    if (misses) *misses = sg->cache_misses;
+}
+
+void reset_surface_profile_stats(SurfaceGen *sg) {
     SurfaceCache *C = get_cache(sg);
-    CacheNode *n = C->head;
-    while (n) {
-        CacheNode *nx = n->next;
-        free(n->col);
-        free(n);
-        n = nx;
-    }
-    C->head = NULL;
-    C->count = 0;
-    (void)sg;
+    if (!C) return;
+    C->ns_sample_noise_column = 0;
+    C->ns_sample_noise_3d = 0;
+    C->ns_sample_noise_2d = 0;
+    C->ns_get_depth_and_scale = 0;
+}
+
+void get_surface_profile_stats(SurfaceGen *sg,
+    uint64_t *ns_sample_noise_column,
+    uint64_t *ns_sample_noise_3d,
+    uint64_t *ns_sample_noise_2d,
+    uint64_t *ns_get_depth_and_scale) {
+    SurfaceCache *C = get_cache(sg);
+    if (!C) return;
+    if (ns_sample_noise_column) *ns_sample_noise_column = C->ns_sample_noise_column;
+    if (ns_sample_noise_3d) *ns_sample_noise_3d = C->ns_sample_noise_3d;
+    if (ns_sample_noise_2d) *ns_sample_noise_2d = C->ns_sample_noise_2d;
+    if (ns_get_depth_and_scale) *ns_get_depth_and_scale = C->ns_get_depth_and_scale;
 }
 
 // ---------- cœur : sample_noise_column (branche 1.16+) ----------
 void sample_noise_column(SurfaceGen *sg, double *buffer, int x, int z)
 {
+    uint64_t t0 = now_ns();
     // ds = { depth, scale }
     // TODO: get_depth_and_scale retourne des valeurs différentes de Java!
     // Java: depth=-0.0162, scale=652.02
     // C:    depth=-0.0066, scale=342.86
     // Le problème est dans cubiomes_get_depth_and_scale (cubiomes_integration.c)
     double ds[2] = {0.0, 0.0};
+    uint64_t t_ds0 = now_ns();
     sg->get_depth_and_scale(x, z, ds, sg->user);
+    uint64_t t_ds1 = now_ns();
+    SurfaceCache *Cprof = get_cache(sg);
+    if (Cprof) Cprof->ns_get_depth_and_scale += (t_ds1 - t_ds0);
     double depth = ds[0];
     double scale = ds[1];
 
     // randomOffset (only Overworld)
     double randomOffset = 0.0;
     if (sg->dim == DIM_OVERWORLD && sg->sample_noise_2d) {
+        uint64_t t2d0 = now_ns();
         randomOffset = sg->sample_noise_2d(x, z, sg->user);
+        uint64_t t2d1 = now_ns();
+        if (Cprof) Cprof->ns_sample_noise_2d += (t2d1 - t2d0);
     }
 
     // LOG: paramètres pour position test
@@ -119,7 +282,10 @@ void sample_noise_column(SurfaceGen *sg, double *buffer, int x, int z)
     for (int y = 6; y < sg->startSizeY; ++y) {
 
         // bruit principal 3D à (x,y,z) dans l'espace "cellule"
+        uint64_t t3d0 = now_ns();
         double noise = sg->sample_noise_3d(x, y, z, sg->user);
+        uint64_t t3d1 = now_ns();
+        if (Cprof) Cprof->ns_sample_noise_3d += (t3d1 - t3d0);
 
         // ==== branche 1.16+ ====
         double fallOff1 = 1.0 - (double)y * 2.0 / (double)sg->noiseSizeY + randomOffset;
@@ -168,10 +334,12 @@ void sample_noise_column(SurfaceGen *sg, double *buffer, int x, int z)
             printf("buffer[9] FINAL = %.10f\n", noise);
         }
 
-        buffer[y] = noise;
+    buffer[y] = noise;
     }
 
     // Optionnel: tu peux remplir buffer[0..5] si nécessaire pour tes usages.
+    uint64_t t1 = now_ns();
+    if (Cprof) Cprof->ns_sample_noise_column += (t1 - t0);
 }
 
 // version avec cache (clé (x,z) → colonne)
@@ -220,19 +388,30 @@ int generate_column_from_y(SurfaceGen *sg, int x, int z,
     }
     
     // Échantillonner les 4 colonnes de bruit aux coins
-    int len = sg->noiseSizeY + 1;
-    double *ds[4];
-    for (int i = 0; i < 4; i++) {
-        ds[i] = (double*)calloc((size_t)len, sizeof(double));
+    const double *ds[4];
+    ds[0] = sample_noise_column_cached(sg, cellX, cellZ);
+    ds[1] = sample_noise_column_cached(sg, cellX, cellZ + 1);
+    ds[2] = sample_noise_column_cached(sg, cellX + 1, cellZ);
+    ds[3] = sample_noise_column_cached(sg, cellX + 1, cellZ + 1);
+
+    double *tmp_ds[4] = {0};
+    if (!ds[0] || !ds[1] || !ds[2] || !ds[3]) {
+        int len = sg->noiseSizeY + 1;
+        for (int i = 0; i < 4; i++) {
+            tmp_ds[i] = (double*)calloc((size_t)len, sizeof(double));
+        }
+        sample_noise_column(sg, tmp_ds[0], cellX, cellZ);
+        sample_noise_column(sg, tmp_ds[1], cellX, cellZ + 1);
+        sample_noise_column(sg, tmp_ds[2], cellX + 1, cellZ);
+        sample_noise_column(sg, tmp_ds[3], cellX + 1, cellZ + 1);
+        ds[0] = tmp_ds[0];
+        ds[1] = tmp_ds[1];
+        ds[2] = tmp_ds[2];
+        ds[3] = tmp_ds[3];
     }
-    
-    sample_noise_column(sg, ds[0], cellX, cellZ);
-    sample_noise_column(sg, ds[1], cellX, cellZ + 1);
-    sample_noise_column(sg, ds[2], cellX + 1, cellZ);
-    sample_noise_column(sg, ds[3], cellX + 1, cellZ + 1);
 
     // LOG: Afficher les valeurs échantillonnées aux 4 coins pour cellY=9
-    if (enableLogs && len > 9) {
+    if (enableLogs && sg->noiseSizeY + 1 > 9) {
         printf("\nValeurs de noise échantillonnées aux 4 coins (cellY=9):\n");
         printf("  ds[0][9] (cellX, cellZ): %.6f\n", ds[0][9]);
         printf("  ds[1][9] (cellX, cellZ+1): %.6f\n", ds[1][9]);
@@ -276,24 +455,26 @@ int generate_column_from_y(SurfaceGen *sg, int x, int z,
 
             // Test du prédicat
             if (predicate != NULL && predicate(block, user)) {
-                // Libérer la mémoire
-                for (int i = 0; i < 4; i++) {
-                    free(ds[i]);
-                }
                 if (enableLogs) {
                     printf(">>> BLOC TROUVÉ à y=%d (retourne %d)\n", y, y + 1);
+                }
+                if (tmp_ds[0]) {
+                    for (int i = 0; i < 4; i++) {
+                        free(tmp_ds[i]);
+                    }
                 }
                 return y + 1;
             }
         }
     }
     
-    // Libérer la mémoire
-    for (int i = 0; i < 4; i++) {
-        free(ds[i]);
-    }
     if (enableLogs) {
         printf(">>> AUCUN BLOC TROUVÉ (retourne 0)\n");
+    }
+    if (tmp_ds[0]) {
+        for (int i = 0; i < 4; i++) {
+            free(tmp_ds[i]);
+        }
     }
     return 0;
 }
