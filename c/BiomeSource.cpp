@@ -27,6 +27,10 @@ SimpleBiomeSource::SimpleBiomeSource(uint64_t worldSeed) : worldSeed(worldSeed) 
     applySeed(&gen, DIM_OVERWORLD, worldSeed);
 }
 
+SimpleBiomeSource::~SimpleBiomeSource() {
+    freeLayerCaches(&gen);
+}
+
 Biome* SimpleBiomeSource::getBiomeForNoiseGen(int x, int y, int z) {
     // Utiliser cubiomes pour obtenir le vrai biome
     // x, y, z sont en noise cell coords (block / 4), comme en Java

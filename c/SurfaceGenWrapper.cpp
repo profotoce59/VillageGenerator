@@ -63,34 +63,6 @@ int SurfaceGenWrapper::generateColumnFromY(int x, int z, BlockPredicate predicat
     return generate_column_from_y(sg, x, z, predicate, sg);
 }
 
-void SurfaceGenWrapper::resetCacheStats() {
-    reset_surface_cache_stats(sg);
-}
-
-void SurfaceGenWrapper::getCacheStats(size_t* hits, size_t* misses) {
-    get_surface_cache_stats(sg, hits, misses);
-}
-
-void SurfaceGenWrapper::resetProfileStats() {
-    reset_surface_profile_stats(sg);
-}
-
-void SurfaceGenWrapper::getProfileStats(uint64_t* ns_sample_noise_column,
-                                        uint64_t* ns_sample_noise_3d,
-                                        uint64_t* ns_sample_noise_2d,
-                                        uint64_t* ns_get_depth_and_scale) {
-    get_surface_profile_stats(sg, ns_sample_noise_column, ns_sample_noise_3d, ns_sample_noise_2d, ns_get_depth_and_scale);
-}
-
-void SurfaceGenWrapper::resetBiomeProfileStats() {
-    reset_cubiomes_profile_stats();
-}
-
-void SurfaceGenWrapper::getBiomeProfileStats(uint64_t* ns_get_biome_at,
-                                             uint64_t* ns_get_depth_and_scale) {
-    get_cubiomes_profile_stats(ns_get_biome_at, ns_get_depth_and_scale);
-}
-
 int SurfaceGenWrapper::getHeightOnGround(int x, int z) {
     // small FIFO cache to avoid recomputing height for same (x,z)
     for (size_t i = 0; i < HEIGHT_CACHE_CAP; i++) {
@@ -130,11 +102,6 @@ void SurfaceGenWrapper::resetHeightCache() {
     heightCacheCursor = 0;
     heightCacheHits = 0;
     heightCacheMisses = 0;
-}
-
-void SurfaceGenWrapper::getHeightCacheStats(size_t* hits, size_t* misses) {
-    if (hits) *hits = heightCacheHits;
-    if (misses) *misses = heightCacheMisses;
 }
 
 int SurfaceGenWrapper::getFirstHeightFull(int x, int z) {

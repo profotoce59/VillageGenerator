@@ -26,6 +26,7 @@ public:
 class SimpleBiomeSource : public BiomeSource {
 public:
     SimpleBiomeSource(uint64_t worldSeed);
+    ~SimpleBiomeSource() override;
 
     Biome* getBiomeForNoiseGen(int x, int y, int z) override;
     bool canGenerateAt(int x, int z, Biome* biome) override;

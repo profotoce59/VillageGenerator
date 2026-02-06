@@ -146,18 +146,6 @@ public:
 
     // Accessor for pieces
     const std::vector<std::unique_ptr<Piece>>& getPieces() const { return pieces; }
-    long long getHeightCalcNs() const { return heightCalcNs; }
-    long long getHeightCalcCalls() const { return heightCalcCalls; }
-    size_t getCacheHits() const { return cacheHits; }
-    size_t getCacheMisses() const { return cacheMisses; }
-    uint64_t getNsSampleNoiseColumn() const { return nsSampleNoiseColumn; }
-    uint64_t getNsSampleNoise3d() const { return nsSampleNoise3d; }
-    uint64_t getNsSampleNoise2d() const { return nsSampleNoise2d; }
-    uint64_t getNsGetDepthAndScale() const { return nsGetDepthAndScale; }
-    size_t getHeightCacheHits() const { return heightCacheHits; }
-    size_t getHeightCacheMisses() const { return heightCacheMisses; }
-    uint64_t getNsGetBiomeAt() const { return nsGetBiomeAt; }
-    uint64_t getNsGetDepthAndScaleBiome() const { return nsGetDepthAndScaleBiome; }
 
 private:
     class Assembler;
@@ -168,18 +156,6 @@ private:
     bool generated;
     bool superflat;
     bool towncenterOptimizer;
-    long long heightCalcNs = 0;
-    long long heightCalcCalls = 0;
-    size_t cacheHits = 0;
-    size_t cacheMisses = 0;
-    uint64_t nsSampleNoiseColumn = 0;
-    uint64_t nsSampleNoise3d = 0;
-    uint64_t nsSampleNoise2d = 0;
-    uint64_t nsGetDepthAndScale = 0;
-    size_t heightCacheHits = 0;
-    size_t heightCacheMisses = 0;
-    uint64_t nsGetBiomeAt = 0;
-    uint64_t nsGetDepthAndScaleBiome = 0;
 
     bool getGoodMeetingPoint(Biome* biome, const std::string& template_name);
 

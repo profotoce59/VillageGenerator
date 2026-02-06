@@ -12,7 +12,6 @@
 #include "JigSawPool.hpp"
 #include "SurfaceGenWrapper.hpp"
 #include <algorithm>
-#include <chrono>
 #include <stdexcept>
 
 // JigsawBlocks data - inclure avant les headers générés
@@ -214,19 +213,14 @@ static bool isNotEmpty(const VoxelShape* vs, const BlockBox& box) {
 class VillageGenerator::Assembler {
 public:
     Assembler(int maxDepth, TerrainGenerator* generator, std::vector<std::unique_ptr<Piece>>& pieces,
-             bool useHeightMapOptimizer, int heightY, VoxelShape* globalShape,
-             long long* heightCalcNs, long long* heightCalcCalls)
+             bool useHeightMapOptimizer, int heightY, VoxelShape* globalShape)
         : maxDepth(maxDepth), generator(generator), pieces(pieces),
-          useHeightMapOptimizer(useHeightMapOptimizer), heightY(heightY), globalShape(globalShape),
-          heightCalcNs(heightCalcNs), heightCalcCalls(heightCalcCalls) {
+          useHeightMapOptimizer(useHeightMapOptimizer), heightY(heightY), globalShape(globalShape) {
         if (useHeightMapOptimizer && generator) {
             // Java: SurfaceGenerator2 dédié au heightMapOptimizer, avec startSizeY = heightY + 25
             heightMapGen = std::make_unique<SurfaceGenWrapper>(generator->getWorldSeed(), 19);
             heightMapGen->setStartSizeYExact(heightY + 25);
-            heightMapGen->resetCacheStats();
-            heightMapGen->resetProfileStats();
             heightMapGen->resetHeightCache();
-            heightMapGen->resetBiomeProfileStats();
         }
     }
 
@@ -238,48 +232,6 @@ public:
             placing.pop_front();
             tryPlacing(villageType, p, rand, true);
         }
-    }
-
-    void getCacheStats(size_t* hits, size_t* misses) const {
-        if (useHeightMapOptimizer && heightMapGen) {
-            heightMapGen->getCacheStats(hits, misses);
-            return;
-        }
-        if (hits) *hits = 0;
-        if (misses) *misses = 0;
-    }
-
-    void getProfileStats(uint64_t* ns_sample_noise_column,
-                         uint64_t* ns_sample_noise_3d,
-                         uint64_t* ns_sample_noise_2d,
-                         uint64_t* ns_get_depth_and_scale) const {
-        if (useHeightMapOptimizer && heightMapGen) {
-            heightMapGen->getProfileStats(ns_sample_noise_column, ns_sample_noise_3d, ns_sample_noise_2d, ns_get_depth_and_scale);
-            return;
-        }
-        if (ns_sample_noise_column) *ns_sample_noise_column = 0;
-        if (ns_sample_noise_3d) *ns_sample_noise_3d = 0;
-        if (ns_sample_noise_2d) *ns_sample_noise_2d = 0;
-        if (ns_get_depth_and_scale) *ns_get_depth_and_scale = 0;
-    }
-
-    void getHeightCacheStats(size_t* hits, size_t* misses) const {
-        if (useHeightMapOptimizer && heightMapGen) {
-            heightMapGen->getHeightCacheStats(hits, misses);
-            return;
-        }
-        if (hits) *hits = 0;
-        if (misses) *misses = 0;
-    }
-
-    void getBiomeProfileStats(uint64_t* ns_get_biome_at,
-                              uint64_t* ns_get_depth_and_scale) const {
-        if (useHeightMapOptimizer && heightMapGen) {
-            heightMapGen->getBiomeProfileStats(ns_get_biome_at, ns_get_depth_and_scale);
-            return;
-        }
-        if (ns_get_biome_at) *ns_get_biome_at = 0;
-        if (ns_get_depth_and_scale) *ns_get_depth_and_scale = 0;
     }
 
     void tryPlacing(VillageType villageType, Piece* piece, ChunkRand& rand, bool expansionHack) {
@@ -401,16 +353,10 @@ public:
                             i2 = minY + l1;
                         } else {
                             if (state == -1) {
-                                auto t0 = std::chrono::high_resolution_clock::now();
                                 if (useHeightMapOptimizer && heightMapGen) {
                                     state = heightMapGen->getHeightOnGround(blockPos.x, blockPos.z);
                                 } else {
                                     state = generator->getFirstHeightInColumn(blockPos.x, blockPos.z, nullptr);
-                                }
-                                auto t1 = std::chrono::high_resolution_clock::now();
-                                if (heightCalcNs && heightCalcCalls) {
-                                    *heightCalcNs += std::chrono::duration_cast<std::chrono::nanoseconds>(t1 - t0).count();
-                                    *heightCalcCalls += 1;
                                 }
                             }
                             i2 = state - k1;
@@ -456,8 +402,6 @@ private:
     bool useHeightMapOptimizer;
     int heightY;
     VoxelShape* globalShape;  // VoxelShape partagé par toutes les pièces
-    long long* heightCalcNs;
-    long long* heightCalcCalls;
     std::unique_ptr<SurfaceGenWrapper> heightMapGen;
     std::deque<Piece*> placing;
 
@@ -505,10 +449,6 @@ VillageGenerator::~VillageGenerator() = default;
 bool VillageGenerator::generate(TerrainGenerator* generator, int chunkX, int chunkZ, ChunkRand& rand) {
     pieces.clear();
     generated = false;
-    heightCalcNs = 0;
-    heightCalcCalls = 0;
-    cacheHits = 0;
-    cacheMisses = 0;
 
     // 1) Biome and villageType resolution
     Biome* biome = nullptr;
@@ -565,13 +505,9 @@ bool VillageGenerator::generate(TerrainGenerator* generator, int chunkX, int chu
     pieces.push_back(std::move(piece));
 
     // 8) Assembler: add first piece to placing, then run until queue empty
-    Assembler assembler(6, generator, pieces, useHeightMapOptimizer, heightY, &globalShape, &heightCalcNs, &heightCalcCalls);
+    Assembler assembler(6, generator, pieces, useHeightMapOptimizer, heightY, &globalShape);
     assembler.addToPlacing(pieces[0].get());
     assembler.run(villageType, rand);
-    assembler.getCacheStats(&cacheHits, &cacheMisses);
-    assembler.getProfileStats(&nsSampleNoiseColumn, &nsSampleNoise3d, &nsSampleNoise2d, &nsGetDepthAndScale);
-    assembler.getHeightCacheStats(&heightCacheHits, &heightCacheMisses);
-    assembler.getBiomeProfileStats(&nsGetBiomeAt, &nsGetDepthAndScaleBiome);
 
     generated = true;
     return true;

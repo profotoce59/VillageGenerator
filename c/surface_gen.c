@@ -48,10 +48,16 @@ typedef struct {
     uint64_t ns_get_depth_and_scale;
 } SurfaceCache;
 
+#define PROFILE_ENABLED 0
+
 static inline uint64_t now_ns(void) {
+#if PROFILE_ENABLED
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+#else
+    return 0;
+#endif
 }
 
 static size_t next_pow2(size_t v) {
@@ -244,28 +250,28 @@ void get_surface_profile_stats(SurfaceGen *sg,
 // ---------- cœur : sample_noise_column (branche 1.16+) ----------
 void sample_noise_column(SurfaceGen *sg, double *buffer, int x, int z)
 {
-    uint64_t t0 = now_ns();
+    uint64_t t0 = PROFILE_ENABLED ? now_ns() : 0;
     // ds = { depth, scale }
     // TODO: get_depth_and_scale retourne des valeurs différentes de Java!
     // Java: depth=-0.0162, scale=652.02
     // C:    depth=-0.0066, scale=342.86
     // Le problème est dans cubiomes_get_depth_and_scale (cubiomes_integration.c)
     double ds[2] = {0.0, 0.0};
-    uint64_t t_ds0 = now_ns();
+    uint64_t t_ds0 = PROFILE_ENABLED ? now_ns() : 0;
     sg->get_depth_and_scale(x, z, ds, sg->user);
-    uint64_t t_ds1 = now_ns();
+    uint64_t t_ds1 = PROFILE_ENABLED ? now_ns() : 0;
     SurfaceCache *Cprof = get_cache(sg);
-    if (Cprof) Cprof->ns_get_depth_and_scale += (t_ds1 - t_ds0);
+    if (PROFILE_ENABLED && Cprof) Cprof->ns_get_depth_and_scale += (t_ds1 - t_ds0);
     double depth = ds[0];
     double scale = ds[1];
 
     // randomOffset (only Overworld)
     double randomOffset = 0.0;
     if (sg->dim == DIM_OVERWORLD && sg->sample_noise_2d) {
-        uint64_t t2d0 = now_ns();
+        uint64_t t2d0 = PROFILE_ENABLED ? now_ns() : 0;
         randomOffset = sg->sample_noise_2d(x, z, sg->user);
-        uint64_t t2d1 = now_ns();
-        if (Cprof) Cprof->ns_sample_noise_2d += (t2d1 - t2d0);
+        uint64_t t2d1 = PROFILE_ENABLED ? now_ns() : 0;
+        if (PROFILE_ENABLED && Cprof) Cprof->ns_sample_noise_2d += (t2d1 - t2d0);
     }
 
     // LOG: paramètres pour position test
@@ -282,10 +288,10 @@ void sample_noise_column(SurfaceGen *sg, double *buffer, int x, int z)
     for (int y = 6; y < sg->startSizeY; ++y) {
 
         // bruit principal 3D à (x,y,z) dans l'espace "cellule"
-        uint64_t t3d0 = now_ns();
+        uint64_t t3d0 = PROFILE_ENABLED ? now_ns() : 0;
         double noise = sg->sample_noise_3d(x, y, z, sg->user);
-        uint64_t t3d1 = now_ns();
-        if (Cprof) Cprof->ns_sample_noise_3d += (t3d1 - t3d0);
+        uint64_t t3d1 = PROFILE_ENABLED ? now_ns() : 0;
+        if (PROFILE_ENABLED && Cprof) Cprof->ns_sample_noise_3d += (t3d1 - t3d0);
 
         // ==== branche 1.16+ ====
         double fallOff1 = 1.0 - (double)y * 2.0 / (double)sg->noiseSizeY + randomOffset;
@@ -338,8 +344,8 @@ void sample_noise_column(SurfaceGen *sg, double *buffer, int x, int z)
     }
 
     // Optionnel: tu peux remplir buffer[0..5] si nécessaire pour tes usages.
-    uint64_t t1 = now_ns();
-    if (Cprof) Cprof->ns_sample_noise_column += (t1 - t0);
+    uint64_t t1 = PROFILE_ENABLED ? now_ns() : 0;
+    if (PROFILE_ENABLED && Cprof) Cprof->ns_sample_noise_column += (t1 - t0);
 }
 
 // version avec cache (clé (x,z) → colonne)

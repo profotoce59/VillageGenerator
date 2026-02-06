@@ -2,11 +2,10 @@
 #include "biomes.h"  // Pour DIM_OVERWORLD, DIM_NETHER, DIM_END
 #include "noise.h"   // Pour samplePerlin
 #include <math.h>
-#include <stdio.h>   // Pour printf (debug)
 #include <stdint.h>
-#include <time.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 // Table de poids pour la moyenne pondérée des biomes (Minecraft 1.16)
 // Calculée avec: 10.0 / sqrt(rx*rx + rz*rz + 0.2) pour rx,rz dans [-2,2]
@@ -72,39 +71,90 @@ static void free_biome_cache(CubiomesContext *ctx) {
     ctx->biome_cache_mask = 0;
 }
 
+
+static inline int getBiomeAtFast(CubiomesContext *ctx, int scale, int x, int y, int z) {
+    if (!ctx) {
+        return none;
+    }
+    size_t len = getMinCacheSize(&ctx->gen, scale, 1, 1, 1);
+    if (len == 0) {
+        return getBiomeAt(&ctx->gen, scale, x, y, z);
+    }
+    if (ctx->biome_tmp_cache_len < len) {
+        int *newbuf = (int*)realloc(ctx->biome_tmp_cache, sizeof(int) * len);
+        if (!newbuf) {
+            return getBiomeAt(&ctx->gen, scale, x, y, z);
+        }
+        ctx->biome_tmp_cache = newbuf;
+        ctx->biome_tmp_cache_len = len;
+    }
+    Range r = {scale, x, z, 1, 1, y, 1};
+    int id = genBiomes(&ctx->gen, ctx->biome_tmp_cache, r);
+    if (id == 0) return ctx->biome_tmp_cache[0];
+    return none;
+}
+
 static inline int getBiomeAtCached(CubiomesContext *ctx, int x, int y, int z) {
     if (!ctx || !ctx->biome_cache_keys || ctx->biome_cache_mask == 0) {
-        return getBiomeAt(&ctx->gen, 4, x, y, z);
+        return getBiomeAtFast(ctx, 4, x, y, z);
     }
     uint64_t key = unique_hash_xyz(x, y, z);
     size_t idx = (size_t)(murmur64(key) & ctx->biome_cache_mask);
     if (ctx->biome_cache_keys[idx] == key) {
         return ctx->biome_cache_values[idx];
     }
-    int value = getBiomeAt(&ctx->gen, 4, x, y, z);
+    int value = getBiomeAtFast(ctx, 4, x, y, z);
     ctx->biome_cache_keys[idx] = key;
     ctx->biome_cache_values[idx] = value;
     return value;
 }
 
-static uint64_t g_ns_get_biome_at = 0;
-static uint64_t g_ns_get_depth_and_scale = 0;
+static inline void cache_biome_put(CubiomesContext *ctx, int x, int y, int z, int biomeId);
 
-static inline uint64_t now_ns(void) {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+static inline int prefill_biome_5x5(CubiomesContext *ctx, int x, int z, int seaLevel, int *biomeGrid, unsigned char *filled) {
+    if (!ctx) return -1;
+    Range r = {4, x - 2, z - 2, 5, 5, seaLevel, 1};
+    size_t need = getMinCacheSize(&ctx->gen, r.scale, r.sx, r.sy, r.sz);
+    if (need == 0) return -1;
+    if (ctx->biome_tmp_cache_len < need) {
+        int *newbuf = (int*)realloc(ctx->biome_tmp_cache, sizeof(int) * need);
+        if (!newbuf) return -1;
+        ctx->biome_tmp_cache = newbuf;
+        ctx->biome_tmp_cache_len = need;
+    }
+    int err = genBiomes(&ctx->gen, ctx->biome_tmp_cache, r);
+    if (err != 0) return err;
+
+    for (int rz = -2; rz <= 2; rz++) {
+        for (int rx = -2; rx <= 2; rx++) {
+            int idx = (rx + 2) + (rz + 2) * 5;
+            int val = ctx->biome_tmp_cache[(rz + 2) * 5 + (rx + 2)];
+            biomeGrid[idx] = val;
+            filled[idx] = 1;
+            cache_biome_put(ctx, x + rx, seaLevel, z + rz, val);
+        }
+    }
+    return 0;
 }
 
-void reset_cubiomes_profile_stats(void) {
-    g_ns_get_biome_at = 0;
-    g_ns_get_depth_and_scale = 0;
+static inline void cache_biome_put(CubiomesContext *ctx, int x, int y, int z, int biomeId) {
+    if (!ctx || !ctx->biome_cache_keys || ctx->biome_cache_mask == 0) {
+        return;
+    }
+    uint64_t key = unique_hash_xyz(x, y, z);
+    size_t idx = (size_t)(murmur64(key) & ctx->biome_cache_mask);
+    ctx->biome_cache_keys[idx] = key;
+    ctx->biome_cache_values[idx] = biomeId;
 }
 
-void get_cubiomes_profile_stats(uint64_t *ns_get_biome_at,
-                                uint64_t *ns_get_depth_and_scale) {
-    if (ns_get_biome_at) *ns_get_biome_at = g_ns_get_biome_at;
-    if (ns_get_depth_and_scale) *ns_get_depth_and_scale = g_ns_get_depth_and_scale;
+static inline void fill_biome_cell(CubiomesContext *ctx, int x, int z, int seaLevel,
+                                   int rx, int rz,
+                                   int *biomeGrid, unsigned char *filled) {
+    int idx = (rx + 2) + (rz + 2) * 5;
+    if (filled[idx]) return;
+    int biomeId = getBiomeAtCached(ctx, x + rx, seaLevel, z + rz);
+    biomeGrid[idx] = biomeId;
+    filled[idx] = 1;
 }
 
 // Initialise un contexte cubiomes
@@ -114,6 +164,8 @@ void init_cubiomes_context(CubiomesContext *ctx, int mc_version, uint64_t seed) 
     ctx->biome_cache_keys = NULL;
     ctx->biome_cache_values = NULL;
     ctx->biome_cache_mask = 0;
+    ctx->biome_tmp_cache = NULL;
+    ctx->biome_tmp_cache_len = 0;
 
     // Initialiser le générateur de biomes
     setupGenerator(&ctx->gen, mc_version, 0);
@@ -123,11 +175,17 @@ void init_cubiomes_context(CubiomesContext *ctx, int mc_version, uint64_t seed) 
     initSurfaceNoise(&ctx->sn, DIM_OVERWORLD, seed);
 
     // Direct-mapped cache (like Java IntLayerCache)
-    init_biome_cache(ctx, 4096);
+    init_biome_cache(ctx, 8192);
 }
 
 void free_cubiomes_context_cache(CubiomesContext *ctx) {
     free_biome_cache(ctx);
+    freeLayerCaches(&ctx->gen);
+    if (ctx && ctx->biome_tmp_cache) {
+        free(ctx->biome_tmp_cache);
+        ctx->biome_tmp_cache = NULL;
+        ctx->biome_tmp_cache_len = 0;
+    }
 }
 
 // Configuration complète de SurfaceGen avec cubiomes
@@ -167,10 +225,6 @@ void setup_surface_gen_with_cubiomes(SurfaceGen *sg, CubiomesContext *ctx) {
 void cubiomes_get_depth_and_scale(int x, int z, double out2[2], void *user) {
     CubiomesContext *ctx = (CubiomesContext*)user;
 
-    // Debug désactivé pour les tests de pièces
-    int enableLogs = 0;  // Mettre à 1 pour débugger la hauteur
-
-    const int sampleRange = 2;
     double weightedScale = 0.0;
     double weightedDepth = 0.0;
     double totalWeight = 0.0;
@@ -181,49 +235,33 @@ void cubiomes_get_depth_and_scale(int x, int z, double out2[2], void *user) {
     const int seaLevel = 63;
 
     // Obtenir le biome central
-    uint64_t t0 = now_ns();
     int centerBiomeId = getBiomeAtCached(ctx, x, seaLevel, z);
-    uint64_t t1 = now_ns();
-    g_ns_get_biome_at += (t1 - t0);
     double centerDepth, centerScale;
     int grass;
-    uint64_t t2 = now_ns();
     getBiomeDepthAndScale(centerBiomeId, &centerDepth, &centerScale, &grass);
-    uint64_t t3 = now_ns();
-    g_ns_get_depth_and_scale += (t3 - t2);
 
-    if (enableLogs) {
-        printf("\n=== C getDepthAndScale ===\n");
-        printf("Position: x=%d, z=%d\n", x, z);
-        printf("centerBiomeId: %d, centerDepth: %.6f, centerScale: %.6f\n",
-               centerBiomeId, centerDepth, centerScale);
+    int biomeGrid[25];
+    unsigned char filled[25] = {0};
+    biomeGrid[12] = centerBiomeId;
+    filled[12] = 1;
+
+    // Fixed behavior: prefill the 5x5 grid to match Java's sampling pattern.
+    if (prefill_biome_5x5(ctx, x, z, seaLevel, biomeGrid, filled) != 0) {
+        // If prefill fails, fall back to on-demand filling.
+        filled[12] = 1;
+        biomeGrid[12] = centerBiomeId;
     }
 
-    // Parcourir les biomes environnants dans un rayon de 2 (en noise cell coords)
-    for (int rx = -sampleRange; rx <= sampleRange; ++rx) {
-        for (int rz = -sampleRange; rz <= sampleRange; ++rz) {
-            // Utiliser scale=4 avec coords=(cellX, seaLevel, cellZ)
-            uint64_t tb0 = now_ns();
-            int biomeId = getBiomeAtCached(ctx, x + rx, seaLevel, z + rz);
-            uint64_t tb1 = now_ns();
-            g_ns_get_biome_at += (tb1 - tb0);
+    for (int rx = -2; rx <= 2; ++rx) {
+        for (int rz = -2; rz <= 2; ++rz) {
+            fill_biome_cell(ctx, x, z, seaLevel, rx, rz, biomeGrid, filled);
+            int biomeId = biomeGrid[(rx + 2) + (rz + 2) * 5];
             double depth, scale;
-            uint64_t td0 = now_ns();
             getBiomeDepthAndScale(biomeId, &depth, &scale, &grass);
-            uint64_t td1 = now_ns();
-            g_ns_get_depth_and_scale += (td1 - td0);
 
-            // Calculer le poids depuis la table
             float weight = BIOME_WEIGHT_TABLE[(rx + 2) + (rz + 2) * 5] / (depth + 2.0);
-
-            // Réduire le poids si le biome est plus élevé que le centre
             if (depth > centerDepth) {
                 weight /= 2.0;
-            }
-
-            if (enableLogs) {
-                printf("  rx=%d, rz=%d: biomeId=%d, depth=%.4f, scale=%.4f, tableWeight=%.4f, weight=%.6f\n",
-                       rx, rz, biomeId, depth, scale, BIOME_WEIGHT_TABLE[(rx + 2) + (rz + 2) * 5], weight);
             }
 
             weightedScale += scale * weight;
@@ -232,36 +270,18 @@ void cubiomes_get_depth_and_scale(int x, int z, double out2[2], void *user) {
         }
     }
 
-    if (enableLogs) {
-        printf("Before normalization: weightedDepth=%.6f, weightedScale=%.6f, totalWeight=%.6f\n",
-               weightedDepth, weightedScale, totalWeight);
-    }
-
     // Calculer les moyennes
     weightedDepth /= totalWeight;
     weightedScale /= totalWeight;
-
-    if (enableLogs) {
-        printf("After normalization: weightedDepth=%.6f, weightedScale=%.6f\n",
-               weightedDepth, weightedScale);
-    }
 
     // Transformations finales (comme dans Minecraft 1.16+)
     weightedScale = weightedScale * 0.9 + 0.1;
     weightedDepth = (weightedDepth * 4.0 - 1.0) / 8.0;
 
-    if (enableLogs) {
-        printf("After final transforms: weightedDepth=%.6f, weightedScale=%.6f\n",
-               weightedDepth, weightedScale);
-    }
-
     // Pour MC 1.16+ : appliquer les transformations spécifiques
     out2[0] = weightedDepth * 17.0 / 64.0;  // depth
     out2[1] = 96.0 / weightedScale;          // scale
 
-    if (enableLogs) {
-        printf("Final output: depth=%.10f, scale=%.10f\n", out2[0], out2[1]);
-    }
 }
 
 // Hook : échantillonne le bruit 3D de cubiomes
@@ -287,26 +307,11 @@ double cubiomes_noise_2d(int x, int z, void *user) {
                                    0.0,  // ymin
                                    1);   // ydefault (true)
 
-    // DEBUG: afficher le bruit brut
-    if (x == 0 && z == 0) {
-        printf("DEBUG cubiomes_noise_2d(0,0): noise_brut=%.16f\n", noise);
-    }
-
     // Ajustement du signe (ligne 253 du Java)
     noise = noise < 0.0 ? -noise * 0.3 : noise;
 
-    // DEBUG: afficher après ajustement signe
-    if (x == 0 && z == 0) {
-        printf("DEBUG après ajustement signe=%.16f\n", noise);
-    }
-
     // Traitement pour 1.16+ (ligne 255 du Java)
     noise = noise * 3.0 * 65535.0 / 8000.0 - 2.0;
-
-    // DEBUG: afficher après transformation
-    if (x == 0 && z == 0) {
-        printf("DEBUG cubiomes_noise_2d(0,0): après transfo=%.16f\n", noise);
-    }
 
     if (noise < 0.0) {
         return 17.0 * noise / 28.0 / 64.0;

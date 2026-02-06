@@ -63,18 +63,7 @@ public:
      */
     void setStartSizeY(int startSizeYBlocks);
     void setStartSizeYExact(int startSizeYBlocks);
-    void resetCacheStats();
-    void getCacheStats(size_t* hits, size_t* misses);
-    void resetProfileStats();
-    void getProfileStats(uint64_t* ns_sample_noise_column,
-                         uint64_t* ns_sample_noise_3d,
-                         uint64_t* ns_sample_noise_2d,
-                         uint64_t* ns_get_depth_and_scale);
-    void resetBiomeProfileStats();
-    void getBiomeProfileStats(uint64_t* ns_get_biome_at,
-                              uint64_t* ns_get_depth_and_scale);
     void resetHeightCache();
-    void getHeightCacheStats(size_t* hits, size_t* misses);
 
     // Getter pour accès direct au SurfaceGen (pour tests)
     SurfaceGen* getSurfaceGen() { return sg; }
