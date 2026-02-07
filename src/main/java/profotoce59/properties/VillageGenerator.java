@@ -457,7 +457,7 @@ public class VillageGenerator extends Generator {
                     NoiseSettings.create(0.9999999814507745, 0.9999999814507745, 80.0, 160.0)
                             .addTopSlide(-10, 3, 0)
                             .addBottomSlide(-30, 0, 0),
-                    1.0D, -0.46875D, true,heightY+25);//13*8
+                    1.0D, -0.46875D, true,heightY+16);//13*8
             /* ------- //13 -> 13*8 = 104 si le village est plus que 104, il y aura une mauvaise gen, mais permet d'optimiser de beaucoup.*/
         }
 
