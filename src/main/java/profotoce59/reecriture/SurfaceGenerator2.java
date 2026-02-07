@@ -20,6 +20,8 @@ import static com.seedfinding.mcnoise.utils.MathHelper.lerp3;
 import static com.seedfinding.mcnoise.utils.MathHelper.maintainPrecision;
 
 public class SurfaceGenerator2 extends SurfaceGenerator {
+    private static final int START_SIZE_MARGIN = 16;
+    // Temporary test override: force start size in blocks (set to -1 to disable)
     private final int chunkHeight;
     private final int chunkWidth;
     private final int noiseSizeY;
@@ -49,10 +51,17 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
     }
     public void setStartSizeY(int newStartSize){
 
-        if(Math.round(newStartSize/8)>this.startSizeY){
-            this.startSizeY = Math.round(newStartSize/8);
+        int newStartCell = Math.round(newStartSize/8);
+        if (newStartCell > this.noiseSizeY) {
+            newStartCell = this.noiseSizeY;
+        }
+        if(newStartCell > this.startSizeY){
+            this.startSizeY = newStartCell;
+            this.noiseColumnCache.clear();
         }
     }
+
+
     @Override
     public Dimension getDimension() {
         return null;
@@ -60,12 +69,12 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
 
     @Override
     public Block getDefaultBlock() {
-        return null;
+        return Blocks.STONE;
     }
 
     @Override
     public Block getDefaultFluid() {
-        return null;
+        return Blocks.WATER;
     }
 
     @Override
@@ -88,12 +97,13 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
             return ds;
         }
     }
+
     public Block getBlockFromNoise(double noise, int y) {
         Block block;
         if(noise > 0.0D) {
-            block = Blocks.STONE;
+            block = this.getDefaultBlock();
         } else if(y < this.getSeaLevel()) {
-            block = Blocks.AIR;
+            block = this.getDefaultFluid();
         } else {
             block = Blocks.AIR;
         }
@@ -153,7 +163,7 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
         double sizeY = this.getMaxNoiseY();//29
         double minY = this.getMinNoiseY();//0
         double randomOffset = this.biomeSource.getDimension() == Dimension.OVERWORLD ? this.sampleNoise(x, z) : 0.0D;
-        for(int y = 6; y < startSizeY; ++y) { //il va donc de la coord 48 à la coord ancienneSize+25
+        for(int y = 0; y < startSizeY; ++y) { //il va donc de la coord 48 à la coord ancienneSize+25
             // everything below is only for 1.14+
             double noise = this.sampleNoise(x, y, z);
             if(version.isNewerOrEqualTo(MCVersion.v1_16)) {
@@ -170,16 +180,11 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
             } else {
                 noise -= this.computeNoiseFalloff(depth, scale, y);
                 if((double)y > sizeY) { //n'arrive jamais sauf à la height limit
-                    System.out.println ("delta "+(y - sizeY - this.noiseSettings.topSlideSettings.offset) / (double)this.noiseSettings.topSlideSettings.size);
                     noise = MathHelper.clampedLerp(noise, this.noiseSettings.topSlideSettings.target, (y - sizeY - this.noiseSettings.topSlideSettings.offset) / (double)this.noiseSettings.topSlideSettings.size);
                 } else if((double)y < minY) { //même pas possible minY = 0
                     noise = MathHelper.clampedLerp(noise, this.noiseSettings.bottomSlideSettings.target, (minY - (double)y) / (minY - 1.0D));
                 }
             }
-            System.out.println("i :"+ x);
-            System.out.println("j :"+ z);
-            System.out.println("y :"+ y);
-            System.out.println("noise :"+ noise);
             buffer[y] = noise;
         }
     }

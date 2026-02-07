@@ -264,7 +264,6 @@ public:
             auto fallbackTemplates = pool->getTemplates(fallbackType);
             if (fallbackTemplates.empty() && mainTemplates.empty()) continue;
 
-
             bool isInside = box.contains(relativeBlockPos);
             VoxelShape* mutableobject1;
             if (isInside) {
@@ -307,7 +306,6 @@ public:
                 }
                 for (const auto& s : listtmp) list.push_back(s);
             }
-                
 
             for (const std::string& jigsawpiece1 : list) {
                 if (jigsawpiece1 == "empty") break;
@@ -354,7 +352,8 @@ public:
                         } else {
                             if (state == -1) {
                                 if (useHeightMapOptimizer && heightMapGen) {
-                                    state = heightMapGen->getHeightOnGround(blockPos.x, blockPos.z);
+                                    // Java heightMapOptimizer uses generateColumnfromY with (block != AIR)
+                                    state = heightMapGen->generateColumnFromY(blockPos.x, blockPos.z, nullptr);
                                 } else {
                                     state = generator->getFirstHeightInColumn(blockPos.x, blockPos.z, nullptr);
                                 }
@@ -369,11 +368,8 @@ public:
                             int k2 = std::max(i1 + 1, box3.maxY - box3.minY);
                             box3.maxY = box3.minY + k2;
                         }
-
                         bool ok = isNotEmpty(mutableobject1, box3);
                         if (!ok) continue;
-
-
                         // Java: mutableobject1.fullBoxes.add(new BlockBox(...))
                         mutableobject1->addCollision(BlockBox(box3.minX, box3.minY, box3.minZ,
                                                              box3.maxX + 1, box3.maxY + 1, box3.maxZ + 1));
@@ -404,7 +400,6 @@ private:
     VoxelShape* globalShape;  // VoxelShape partagé par toutes les pièces
     std::unique_ptr<SurfaceGenWrapper> heightMapGen;
     std::deque<Piece*> placing;
-
     std::string selectRandomTemplate(const std::vector<TemplateEntry>& templates, std::mt19937_64& rng) {
         if (templates.empty()) return "";
         std::uniform_int_distribution<size_t> dist(0, templates.size() - 1);
@@ -528,26 +523,3 @@ bool VillageGenerator::generate(TerrainGenerator* generator, int chunkX, int chu
     
     return generate(generator, chunkX, chunkZ, rand);
 }
-
-bool VillageGenerator::getGoodMeetingPoint(Biome* biome, const std::string& template_name) {
-    if (!biome) return false;
-
-    // Vérifier si le template est approprié pour le biome
-    if (biome->getType() == Biome::Type::DESERT) {
-        return template_name == "desert/town_centers/desert_meeting_point_2";
-    }
-    else if (biome->getType() == Biome::Type::PLAINS) {
-        return template_name == "plains/town_centers/plains_meeting_point_2";
-    }
-    else if (biome->getType() == Biome::Type::TAIGA) {
-        return template_name == "taiga/town_centers/taiga_meeting_point_2";
-    }
-    else if (biome->getType() == Biome::Type::SNOWY_TUNDRA) {
-        return true;
-    }
-    else if (biome->getType() == Biome::Type::SAVANNA) {
-        return template_name != "savanna/town_centers/savanna_meeting_point_1";
-    }
-
-    return false;
-} 

@@ -10,14 +10,10 @@ int SurfaceGenWrapper::defaultNotAirPredicate(Block block, void* user) {
     return (block != BLOCK_AIR) ? 1 : 0;
 }
 
-// Prédicat WORLD_SURFACE_WG : pour l'instant, identique au prédicat par défaut
-// car notre génération de surface ne produit que STONE/WATER/AIR (pas de blocs décoratifs détaillés)
-// La différence de 3 blocs vient probablement d'un décalage dans le calcul du bruit ou des coordonnées
+// Prédicat WORLD_SURFACE_WG : correspond au premier bloc solide (STONE)
 int SurfaceGenWrapper::worldSurfaceWGPredicate(Block block, void* user) {
     (void)user;
-    // Pour l'instant, même logique que defaultNotAirPredicate
-    // TODO: Investiguer pourquoi nous obtenons Y=74 au lieu de Y=71
-    return (block != BLOCK_AIR) ? 1 : 0;
+    return (block == BLOCK_STONE) ? 1 : 0;
 }
 
 SurfaceGenWrapper::SurfaceGenWrapper(uint64_t worldSeed, int mcVersion) {
@@ -110,7 +106,7 @@ int SurfaceGenWrapper::getFirstHeightFull(int x, int z) {
     sg->startSizeY = sg->noiseSizeY;
     // cache dépend de startSizeY
     free_surface_cache(sg);
-    int height = generateColumnFromY(x, z, worldSurfaceWGPredicate);
+    int height = generateColumnFromY(x, z, defaultNotAirPredicate);
     // restaurer et invalider
     sg->startSizeY = oldStart;
     free_surface_cache(sg);
