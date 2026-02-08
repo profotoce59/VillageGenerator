@@ -281,14 +281,11 @@ void cubiomes_get_depth_and_scale(int x, int z, double out2[2], void *user) {
     // Pour MC 1.16+ : appliquer les transformations spécifiques
     out2[0] = weightedDepth * 17.0 / 64.0;  // depth
     out2[1] = 96.0 / weightedScale;          // scale
-
 }
 
 // Hook : échantillonne le bruit 3D de cubiomes
 double cubiomes_noise_3d(int x, int y, int z, void *user) {
     CubiomesContext *ctx = (CubiomesContext*)user;
-
-    // Échantillonner le bruit de surface de cubiomes
     return sampleSurfaceNoise(&ctx->sn, x, y, z);
 }
 
@@ -298,7 +295,6 @@ double cubiomes_noise_2d(int x, int z, void *user) {
     CubiomesContext *ctx = (CubiomesContext*)user;
 
     // Le Java fait: depthNoise.sample(x * 200, 10.0, z * 200, 1.0, 0.0, true)
-    // En cubiomes, on utilise sampleOctaveAmp sur octdepth
     double noise = sampleOctaveAmp(&ctx->sn.octdepth,
                                    (double)(x * 200),
                                    10.0,
@@ -307,15 +303,11 @@ double cubiomes_noise_2d(int x, int z, void *user) {
                                    0.0,  // ymin
                                    1);   // ydefault (true)
 
-    // Ajustement du signe (ligne 253 du Java)
     noise = noise < 0.0 ? -noise * 0.3 : noise;
-
-    // Traitement pour 1.16+ (ligne 255 du Java)
     noise = noise * 3.0 * 65535.0 / 8000.0 - 2.0;
 
     if (noise < 0.0) {
         return 17.0 * noise / 28.0 / 64.0;
     }
-
     return fmin(noise, 1.0) * 17.0 / 40.0 / 64.0;
 }

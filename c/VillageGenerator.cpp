@@ -1,6 +1,5 @@
 #include "VillageGenerator.hpp"
 #include <iostream>
-#include <ctime>
 #include "VillagePools.hpp"
 #include "BlockRotation.hpp"
 #include "VoxelShape.hpp"
@@ -298,159 +297,6 @@ static bool isNotEmpty(const VoxelShape* vs, const BlockBox& box, uint64_t* boxe
     return !vs->intersects(box, boxesScanned);
 }
 
-// Profiling accumulators for inside VillageGenerator::tryPlacing
-static inline uint64_t vg_now_ns() {
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
-}
-
-static inline bool vg_profile_enabled() {
-    static int enabled = -1;
-    if (enabled == -1) {
-        const char* env = std::getenv("VG_TRY_PROFILE");
-        enabled = (env && *env && *env != '0') ? 1 : 0;
-    }
-    return enabled == 1;
-}
-
-static uint64_t vg_ns_height = 0;            // height calc (noise)
-static uint64_t vg_ns_jigsaw_piece = 0;      // getShuffledJigsawBlocks for current piece
-static uint64_t vg_ns_template_expand = 0;   // template list expansion + shuffle
-static uint64_t vg_ns_jigsaw_candidate = 0;  // getShuffledJigsawBlocks for each candidate
-static uint64_t vg_ns_collision = 0;         // isNotEmpty (collision detection)
-static uint64_t vg_ns_attach = 0;            // canAttach checks
-static uint64_t vg_ns_bbox = 0;              // bounding box / position math (excluding height)
-static uint64_t vg_ns_place = 0;             // addCollision + new piece push
-static uint64_t vg_ns_expansionhack = 0;     // i1 expansionHack loop
-static uint64_t vg_ns_pool = 0;              // pool getTemplates/fallback + placement behaviour
-static uint64_t vg_ns_block_setup = 0;       // per-block setup (dir/rel/y/state/poolType)
-static uint64_t vg_ns_preblock = 0;          // per jigsaw-block prework (dir/rel/inside)
-static uint64_t vg_ns_rotshuffle = 0;        // BlockRotationHelper::getShuffled
-static uint64_t vg_ns_size_lookup = 0;       // get_bpos size lookup
-static uint64_t vg_ns_bucket = 0;            // bucket compact (order + sort)
-static uint64_t vg_ns_list_build = 0;        // build list/listtmp
-static uint64_t vg_ns_list_shuffle = 0;      // shuffle list/listtmp
-static uint64_t vg_ns_indices_build = 0;     // indices resize + iota
-static uint64_t vg_ns_indices_shuffle = 0;   // shuffle indices
-static uint64_t vg_ns_other = 0;             // everything else in tryPlacing
-
-static uint64_t vg_calls_height = 0;
-static uint64_t vg_calls_tryplacing = 0;
-static uint64_t vg_calls_jigsaw_candidate = 0;
-static uint64_t vg_calls_collision = 0;
-static uint64_t vg_calls_attach = 0;
-static uint64_t vg_calls_bbox = 0;
-static uint64_t vg_calls_place = 0;
-static uint64_t vg_calls_expansionhack = 0;
-static uint64_t vg_calls_pool = 0;
-static uint64_t vg_calls_block_setup = 0;
-static uint64_t vg_calls_preblock = 0;
-static uint64_t vg_calls_rotshuffle = 0;
-static uint64_t vg_calls_size_lookup = 0;
-static uint64_t vg_calls_bucket = 0;
-static uint64_t vg_calls_list_build = 0;
-static uint64_t vg_calls_list_shuffle = 0;
-static uint64_t vg_calls_indices_build = 0;
-static uint64_t vg_calls_indices_shuffle = 0;
-static uint64_t vg_collision_boxes_scanned = 0; // total boxes checked in intersects
-
-void VillageGenerator_resetProfiling() {
-    if (!vg_profile_enabled()) return;
-    vg_ns_height = 0;
-    vg_ns_jigsaw_piece = 0;
-    vg_ns_template_expand = 0;
-    vg_ns_jigsaw_candidate = 0;
-    vg_ns_collision = 0;
-    vg_ns_attach = 0;
-    vg_ns_bbox = 0;
-    vg_ns_place = 0;
-    vg_ns_expansionhack = 0;
-    vg_ns_pool = 0;
-    vg_ns_block_setup = 0;
-    vg_ns_preblock = 0;
-    vg_ns_rotshuffle = 0;
-    vg_ns_size_lookup = 0;
-    vg_ns_bucket = 0;
-    vg_ns_list_build = 0;
-    vg_ns_list_shuffle = 0;
-    vg_ns_indices_build = 0;
-    vg_ns_indices_shuffle = 0;
-    vg_ns_other = 0;
-    vg_calls_height = 0;
-    vg_calls_tryplacing = 0;
-    vg_calls_jigsaw_candidate = 0;
-    vg_calls_collision = 0;
-    vg_calls_attach = 0;
-    vg_calls_bbox = 0;
-    vg_calls_place = 0;
-    vg_calls_expansionhack = 0;
-    vg_calls_pool = 0;
-    vg_calls_block_setup = 0;
-    vg_calls_preblock = 0;
-    vg_calls_rotshuffle = 0;
-    vg_calls_size_lookup = 0;
-    vg_calls_bucket = 0;
-    vg_calls_list_build = 0;
-    vg_calls_list_shuffle = 0;
-    vg_calls_indices_build = 0;
-    vg_calls_indices_shuffle = 0;
-    vg_collision_boxes_scanned = 0;
-}
-
-void VillageGenerator_printProfiling() {
-    if (!vg_profile_enabled()) return;
-    auto ms = [](uint64_t ns) { return ns / 1000000.0; };
-    uint64_t total = vg_ns_height + vg_ns_jigsaw_piece + vg_ns_template_expand
-                   + vg_ns_jigsaw_candidate + vg_ns_collision + vg_ns_attach
-                   + vg_ns_bbox + vg_ns_place + vg_ns_expansionhack + vg_ns_pool
-                   + vg_ns_block_setup + vg_ns_preblock + vg_ns_rotshuffle + vg_ns_size_lookup + vg_ns_bucket
-                   + vg_ns_list_build + vg_ns_list_shuffle + vg_ns_indices_build + vg_ns_indices_shuffle
-                   + vg_ns_other;
-    auto pct = [&](uint64_t ns) { return total > 0 ? (ns * 100.0 / total) : 0.0; };
-
-    std::cout << "\n--- tryPlacing internal breakdown ---" << std::endl;
-    std::cout << "Height calc (noise):       " << ms(vg_ns_height) << " ms (" << pct(vg_ns_height) << "%)"
-              << "  [" << vg_calls_height << " calls]" << std::endl;
-    std::cout << "Jigsaw blocks (piece):     " << ms(vg_ns_jigsaw_piece) << " ms (" << pct(vg_ns_jigsaw_piece) << "%)" << std::endl;
-    std::cout << "Template expand+shuffle:   " << ms(vg_ns_template_expand) << " ms (" << pct(vg_ns_template_expand) << "%)" << std::endl;
-    std::cout << "Jigsaw blocks (candidate): " << ms(vg_ns_jigsaw_candidate) << " ms (" << pct(vg_ns_jigsaw_candidate) << "%)"
-              << "  [" << vg_calls_jigsaw_candidate << " calls]" << std::endl;
-    std::cout << "Collision (isNotEmpty):    " << ms(vg_ns_collision) << " ms (" << pct(vg_ns_collision) << "%)"
-              << "  [" << vg_calls_collision << " calls, " << vg_collision_boxes_scanned << " boxes scanned]" << std::endl;
-    std::cout << "Attach checks:             " << ms(vg_ns_attach) << " ms (" << pct(vg_ns_attach) << "%)"
-              << "  [" << vg_calls_attach << " calls]" << std::endl;
-    std::cout << "BBox/pos math:             " << ms(vg_ns_bbox) << " ms (" << pct(vg_ns_bbox) << "%)"
-              << "  [" << vg_calls_bbox << " calls]" << std::endl;
-    std::cout << "Place piece (push):        " << ms(vg_ns_place) << " ms (" << pct(vg_ns_place) << "%)"
-              << "  [" << vg_calls_place << " calls]" << std::endl;
-    std::cout << "ExpansionHack (i1 loop):   " << ms(vg_ns_expansionhack) << " ms (" << pct(vg_ns_expansionhack) << "%)"
-              << "  [" << vg_calls_expansionhack << " calls]" << std::endl;
-    std::cout << "Pool lookups:              " << ms(vg_ns_pool) << " ms (" << pct(vg_ns_pool) << "%)"
-              << "  [" << vg_calls_pool << " calls]" << std::endl;
-    std::cout << "Block setup:               " << ms(vg_ns_block_setup) << " ms (" << pct(vg_ns_block_setup) << "%)"
-              << "  [" << vg_calls_block_setup << " calls]" << std::endl;
-    std::cout << "Pre-block setup:           " << ms(vg_ns_preblock) << " ms (" << pct(vg_ns_preblock) << "%)"
-              << "  [" << vg_calls_preblock << " calls]" << std::endl;
-    std::cout << "Rotation shuffle:          " << ms(vg_ns_rotshuffle) << " ms (" << pct(vg_ns_rotshuffle) << "%)"
-              << "  [" << vg_calls_rotshuffle << " calls]" << std::endl;
-    std::cout << "Size lookup (get_bpos):    " << ms(vg_ns_size_lookup) << " ms (" << pct(vg_ns_size_lookup) << "%)"
-              << "  [" << vg_calls_size_lookup << " calls]" << std::endl;
-    std::cout << "Bucket compact:            " << ms(vg_ns_bucket) << " ms (" << pct(vg_ns_bucket) << "%)"
-              << "  [" << vg_calls_bucket << " calls]" << std::endl;
-    std::cout << "List build:                " << ms(vg_ns_list_build) << " ms (" << pct(vg_ns_list_build) << "%)"
-              << "  [" << vg_calls_list_build << " calls]" << std::endl;
-    std::cout << "List shuffle:              " << ms(vg_ns_list_shuffle) << " ms (" << pct(vg_ns_list_shuffle) << "%)"
-              << "  [" << vg_calls_list_shuffle << " calls]" << std::endl;
-    std::cout << "Indices build:             " << ms(vg_ns_indices_build) << " ms (" << pct(vg_ns_indices_build) << "%)"
-              << "  [" << vg_calls_indices_build << " calls]" << std::endl;
-    std::cout << "Indices shuffle:           " << ms(vg_ns_indices_shuffle) << " ms (" << pct(vg_ns_indices_shuffle) << "%)"
-              << "  [" << vg_calls_indices_shuffle << " calls]" << std::endl;
-    std::cout << "Other (bbox, attach, etc): " << ms(vg_ns_other) << " ms (" << pct(vg_ns_other) << "%)" << std::endl;
-    std::cout << "Total tryPlacing:          " << ms(total) << " ms"
-              << "  [" << vg_calls_tryplacing << " calls]" << std::endl;
-}
-
 class VillageGenerator::Assembler {
 public:
     Assembler(int maxDepth, TerrainGenerator* generator, std::vector<std::unique_ptr<Piece>>& pieces,
@@ -474,9 +320,6 @@ public:
             Piece* p = placing.front();
             placing.pop_front();
             tryPlacing(villageType, pool.get(), p, rand, true);
-            if (vg_profile_enabled()) {
-                vg_calls_tryplacing++;
-            }
         }
     }
 
@@ -487,63 +330,14 @@ public:
         const BlockBox& box = piece->box;
         const int minY = box.minY;
 
-        const bool prof = vg_profile_enabled();
-        uint64_t t_other0 = 0;
-        uint64_t snap_jp = 0;
-        uint64_t snap_te = 0;
-        uint64_t snap_jc = 0;
-        uint64_t snap_col = 0;
-        uint64_t snap_h = 0;
-        uint64_t snap_attach = 0;
-        uint64_t snap_bbox = 0;
-        uint64_t snap_place = 0;
-        uint64_t snap_exp = 0;
-        uint64_t snap_pool = 0;
-        uint64_t snap_block_setup = 0;
-        uint64_t snap_pre = 0;
-        uint64_t snap_rot = 0;
-        uint64_t snap_size = 0;
-        uint64_t snap_bucket = 0;
-        uint64_t snap_list_build = 0;
-        uint64_t snap_list_shuffle = 0;
-        uint64_t snap_indices_build = 0;
-        uint64_t snap_indices_shuffle = 0;
-        if (prof) {
-            t_other0 = vg_now_ns();
-            snap_jp = vg_ns_jigsaw_piece;
-            snap_te = vg_ns_template_expand;
-            snap_jc = vg_ns_jigsaw_candidate;
-            snap_col = vg_ns_collision;
-            snap_h = vg_ns_height;
-            snap_attach = vg_ns_attach;
-            snap_bbox = vg_ns_bbox;
-            snap_place = vg_ns_place;
-            snap_exp = vg_ns_expansionhack;
-            snap_pool = vg_ns_pool;
-            snap_block_setup = vg_ns_block_setup;
-            snap_pre = vg_ns_preblock;
-            snap_rot = vg_ns_rotshuffle;
-            snap_size = vg_ns_size_lookup;
-            snap_bucket = vg_ns_bucket;
-            snap_list_build = vg_ns_list_build;
-            snap_list_shuffle = vg_ns_list_shuffle;
-            snap_indices_build = vg_ns_indices_build;
-            snap_indices_shuffle = vg_ns_indices_shuffle;
-        }
-
         if (!pool) return;
 
         // --- Jigsaw blocks for current piece ---
-        uint64_t t_jp0 = prof ? vg_now_ns() : 0;
         std::vector<BlockJigsawInfo> jigsawBlocks = getShuffledJigsawBlocks(piece, villageType, rand);
-        if (prof) {
-            vg_ns_jigsaw_piece += (vg_now_ns() - t_jp0);
-        }
 
         VoxelShape mutableobject;
 
         for (const BlockJigsawInfo& blockJigsawInfo : jigsawBlocks) {
-            uint64_t t_setup0 = prof ? vg_now_ns() : 0;
             BlockDirection blockDirection = blockJigsawInfo.front;
             BPos blockPos = blockJigsawInfo.pos;
             BPos dirVec = BlockRotationHelper::getDirectionVector(blockDirection);
@@ -552,30 +346,13 @@ public:
             int state = -1;
 
             PoolType jointType = blockJigsawInfo.poolType;
-            if (prof) {
-                vg_ns_block_setup += (vg_now_ns() - t_setup0);
-                vg_calls_block_setup++;
-            }
-
-            uint64_t t_pool0 = prof ? vg_now_ns() : 0;
             auto mainTemplates = pool->getTemplates(jointType);
-            if (mainTemplates.empty()) {
-                if (prof) {
-                    vg_ns_pool += (vg_now_ns() - t_pool0);
-                    vg_calls_pool++;
-                }
-                continue;
-            }
+            if (mainTemplates.empty()) continue;
 
             PoolType fallbackType = getFallbackPoolType(villageType, jointType);
             auto fallbackTemplates = pool->getTemplates(fallbackType);
-            if (prof) {
-                vg_ns_pool += (vg_now_ns() - t_pool0);
-                vg_calls_pool++;
-            }
             if (fallbackTemplates.empty() && mainTemplates.empty()) continue;
 
-            uint64_t t_pre0 = prof ? vg_now_ns() : 0;
             bool isInside = box.contains(relativeBlockPos);
             VoxelShape* mutableobject1;
             if (isInside) {
@@ -586,16 +363,10 @@ public:
             } else {
                 mutableobject1 = globalShape;
             }
-            if (prof) {
-                vg_ns_preblock += (vg_now_ns() - t_pre0);
-                vg_calls_preblock++;
-            }
 
             // --- Template expansion + shuffle ---
-            uint64_t t_te0 = prof ? vg_now_ns() : 0;
             std::vector<std::string_view> list;
             if (depth != maxDepth && !mainTemplates.empty()) {
-                uint64_t t_lb0 = prof ? vg_now_ns() : 0;
                 size_t total = 0;
                 for (const auto& t : mainTemplates) total += t.weight;
                 list.reserve(total);
@@ -604,23 +375,13 @@ public:
                         list.push_back(t.name);
                     }
                 }
-                if (prof) {
-                    vg_ns_list_build += (vg_now_ns() - t_lb0);
-                    vg_calls_list_build++;
-                }
                 if (!list.empty()) {
-                    uint64_t t_ls0 = prof ? vg_now_ns() : 0;
                     rand.shuffle(list);
                     rand.advance(1);
-                    if (prof) {
-                        vg_ns_list_shuffle += (vg_now_ns() - t_ls0);
-                        vg_calls_list_shuffle++;
-                    }
                 }
             }
             if (!fallbackTemplates.empty()) {
                 std::vector<std::string_view> listtmp;
-                uint64_t t_lb1 = prof ? vg_now_ns() : 0;
                 size_t total = 0;
                 for (const auto& t : fallbackTemplates) total += t.weight;
                 listtmp.reserve(total);
@@ -629,60 +390,28 @@ public:
                         listtmp.push_back(t.name);
                     }
                 }
-                if (prof) {
-                    vg_ns_list_build += (vg_now_ns() - t_lb1);
-                    vg_calls_list_build++;
-                }
                 if (!listtmp.empty()) {
-                    uint64_t t_ls1 = prof ? vg_now_ns() : 0;
                     rand.shuffle(listtmp);
                     rand.advance(1);
-                    if (prof) {
-                        vg_ns_list_shuffle += (vg_now_ns() - t_ls1);
-                        vg_calls_list_shuffle++;
-                    }
                 }
                 list.insert(list.end(), listtmp.begin(), listtmp.end());
-            }
-            if (prof) {
-                vg_ns_template_expand += (vg_now_ns() - t_te0);
             }
 
             for (std::string_view jigsawpiece1 : list) {
                 if (jigsawpiece1 == "empty") break;
-                uint64_t t_rot0 = prof ? vg_now_ns() : 0;
                 auto rotations = BlockRotationHelper::getShuffled(rand);
-                if (prof) {
-                    vg_ns_rotshuffle += (vg_now_ns() - t_rot0);
-                    vg_calls_rotshuffle++;
-                }
                 for (BlockRotation rotation1 : rotations) {
                     // --- Jigsaw blocks for candidate (cache lookup only) ---
-                    uint64_t t_jc0 = prof ? vg_now_ns() : 0;
                     const CandidateCache& candCache =
                         getCachedJigsawBlocksOrigin(jigsawpiece1, villageType, rotation1);
-                    if (prof) {
-                        vg_ns_jigsaw_candidate += (vg_now_ns() - t_jc0);
-                        vg_calls_jigsaw_candidate++;
-                    }
                     bool hasSize = candCache.hasSize;
                     BlockBox box1 = candCache.box1_origin;
                     const std::vector<BlockJigsawInfo>& baseList = candCache.list;
                     static thread_local std::vector<int> indices;
-                    uint64_t t_ib0 = prof ? vg_now_ns() : 0;
                     indices.resize(baseList.size());
                     std::iota(indices.begin(), indices.end(), 0);
-                    if (prof) {
-                        vg_ns_indices_build += (vg_now_ns() - t_ib0);
-                        vg_calls_indices_build++;
-                    }
                     if (indices.size() > 1) {
-                        uint64_t t_is0 = prof ? vg_now_ns() : 0;
                         rand.shuffle(indices);
-                        if (prof) {
-                            vg_ns_indices_shuffle += (vg_now_ns() - t_is0);
-                            vg_calls_indices_shuffle++;
-                        }
                     }
 
                     uint32_t targetKey = makeAttachKey(
@@ -693,12 +422,7 @@ public:
 
                     int i1 = 0;
                     if (expansionHack && (box1.maxY - box1.minY) <= 16) {
-                        uint64_t t_exp0 = prof ? vg_now_ns() : 0;
                         i1 = candCache.expansionMax;
-                        if (prof) {
-                            vg_ns_expansionhack += (vg_now_ns() - t_exp0);
-                            vg_calls_expansionhack++;
-                        }
                     }
 
                     if (bucketIt == candCache.bucket.end()) {
@@ -706,7 +430,6 @@ public:
                         continue;
                     }
 
-                    uint64_t t_bucket0 = prof ? vg_now_ns() : 0;
                     static thread_local std::vector<int> order;
                     static thread_local std::vector<int> match;
                     order.resize(indices.size());
@@ -717,20 +440,10 @@ public:
                     std::sort(match.begin(), match.end(), [&](int a, int b) {
                         return order[static_cast<size_t>(a)] < order[static_cast<size_t>(b)];
                     });
-                    if (prof) {
-                        vg_ns_bucket += (vg_now_ns() - t_bucket0);
-                        vg_calls_bucket++;
-                    }
 
                     for (int idx : match) {
-                        uint64_t t_attach0 = prof ? vg_now_ns() : 0;
                         const BlockJigsawInfo& blockJigsawInfo2 = baseList[static_cast<size_t>(idx)];
-                        if (prof) {
-                            vg_ns_attach += (vg_now_ns() - t_attach0);
-                            vg_calls_attach++;
-                        }
 
-                        uint64_t t_bbox0 = prof ? vg_now_ns() : 0;
                         BPos blockPos3 = blockJigsawInfo2.pos;
                         BPos blockPos4(relativeBlockPos.x - blockPos3.x,
                                        relativeBlockPos.y - blockPos3.y,
@@ -745,30 +458,20 @@ public:
                         bool flag2 = (pool->getPlacementBehaviour(jointType) == PlacementBehaviour::RIGID);
                         int k1 = blockPos3.y;
                         int l1 = y - k1 + dirVec.y;
-                        if (prof) {
-                            vg_ns_bbox += (vg_now_ns() - t_bbox0);
-                            vg_calls_bbox++;
-                        }
                         int i2;
                         if (isRigid && flag2) {
                             i2 = minY + l1;
                         } else {
                             if (state == -1) {
-                                uint64_t th0 = prof ? vg_now_ns() : 0;
                                 if (useHeightMapOptimizer && heightMapGen) {
                                     state = heightMapGen->generateColumnFromY(blockPos.x, blockPos.z, nullptr);
                                 } else {
                                     state = generator->getFirstHeightInColumn(blockPos.x, blockPos.z, nullptr);
                                 }
-                                if (prof) {
-                                    vg_ns_height += (vg_now_ns() - th0);
-                                    vg_calls_height++;
-                                }
                             }
                             i2 = state - k1;
                         }
                         int j2 = i2 - j1;
-                        uint64_t t_bbox1 = prof ? vg_now_ns() : 0;
                         BlockBox box3(box2.minX, box2.minY, box2.minZ, box2.maxX, box2.maxY, box2.maxZ);
                         box3.move(0, j2, 0);
                         BPos blockpos5(blockPos4.x, blockPos4.y + j2, blockPos4.z);
@@ -776,24 +479,11 @@ public:
                             int k2 = std::max(i1 + 1, box3.maxY - box3.minY);
                             box3.maxY = box3.minY + k2;
                         }
-                        if (prof) {
-                            vg_ns_bbox += (vg_now_ns() - t_bbox1);
-                            vg_calls_bbox++;
-                        }
 
                         // --- Collision detection ---
-                        bool ok;
-                        if (prof) {
-                            uint64_t t_col0 = vg_now_ns();
-                            ok = isNotEmpty(mutableobject1, box3, &vg_collision_boxes_scanned);
-                            vg_ns_collision += (vg_now_ns() - t_col0);
-                            vg_calls_collision++;
-                        } else {
-                            ok = isNotEmpty(mutableobject1, box3, nullptr);
-                        }
+                        bool ok = isNotEmpty(mutableobject1, box3, nullptr);
 
                         if (!ok) continue;
-                        uint64_t t_place0 = prof ? vg_now_ns() : 0;
                         mutableobject1->addCollision(BlockBox(box3.minX, box3.minY, box3.minZ,
                                                              box3.maxX + 1, box3.maxY + 1, box3.maxZ + 1));
                         auto newPiece = std::make_unique<Piece>(
@@ -804,10 +494,6 @@ public:
                             pieces.push_back(std::move(newPiece));
                             placing.push_back(pieces.back().get());
                         }
-                        if (prof) {
-                            vg_ns_place += (vg_now_ns() - t_place0);
-                            vg_calls_place++;
-                        }
 
                         goto next_jigsaw_block;
                     }
@@ -815,21 +501,6 @@ public:
 
             };
             next_jigsaw_block:;
-        }
-        // "other" = total tryPlacing time minus all explicitly measured sub-sections
-        if (prof) {
-            uint64_t totalThisCall = vg_now_ns() - t_other0;
-            uint64_t measuredThisCall = (vg_ns_jigsaw_piece - snap_jp) + (vg_ns_template_expand - snap_te)
-                                      + (vg_ns_jigsaw_candidate - snap_jc) + (vg_ns_collision - snap_col)
-                                      + (vg_ns_height - snap_h) + (vg_ns_attach - snap_attach)
-                                      + (vg_ns_bbox - snap_bbox) + (vg_ns_place - snap_place)
-                                      + (vg_ns_expansionhack - snap_exp) + (vg_ns_pool - snap_pool)
-                                      + (vg_ns_block_setup - snap_block_setup) + (vg_ns_preblock - snap_pre)
-                                      + (vg_ns_rotshuffle - snap_rot)
-                                      + (vg_ns_size_lookup - snap_size) + (vg_ns_bucket - snap_bucket)
-                                      + (vg_ns_list_build - snap_list_build) + (vg_ns_list_shuffle - snap_list_shuffle)
-                                      + (vg_ns_indices_build - snap_indices_build) + (vg_ns_indices_shuffle - snap_indices_shuffle);
-            vg_ns_other += totalThisCall - measuredThisCall;
         }
     }
 
@@ -917,10 +588,7 @@ bool VillageGenerator::generate(TerrainGenerator* generator, int chunkX, int chu
     int centerZ = (box.minZ + box.maxZ) / 2;
 
     // 5) Ground Y using height map
-    uint64_t th_init0 = vg_now_ns();
     int heightY = generator->getHeightOnGround(centerX, centerZ);
-    vg_ns_height += (vg_now_ns() - th_init0);
-    vg_calls_height++;
     int y = bPos.y + heightY;
     int centerY = box.minY + 1;
 

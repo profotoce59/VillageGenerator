@@ -100,13 +100,7 @@ void free_surface_cache(SurfaceGen *sg);
 void reset_surface_cache_stats(SurfaceGen *sg);
 void get_surface_cache_stats(SurfaceGen *sg, size_t *hits, size_t *misses);
 
-// profiling
-void reset_surface_profile_stats(SurfaceGen *sg);
-void get_surface_profile_stats(SurfaceGen *sg,
-    uint64_t *ns_sample_noise_column,
-    uint64_t *ns_sample_noise_3d,
-    uint64_t *ns_sample_noise_2d,
-    uint64_t *ns_get_depth_and_scale);
+
 
 #ifdef __cplusplus
 }

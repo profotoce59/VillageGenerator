@@ -164,5 +164,3 @@ private:
 };
 
 // Profiling helpers
-void VillageGenerator_resetProfiling();
-void VillageGenerator_printProfiling();
