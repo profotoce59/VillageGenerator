@@ -29,7 +29,7 @@ const std::unordered_map<VillageType, JigSawPool, EnumClassHash> STARTS = {
 };
 
 // Fonction utilitaire pour sélectionner un template aléatoire en tenant compte des poids
-std::string selectRandomTemplate(const std::vector<TemplateEntry>& templates, std::mt19937& rng) {
+std::string_view selectRandomTemplate(const std::vector<TemplateEntry>& templates, std::mt19937& rng) {
     if (templates.empty()) {
         return "";
     }
@@ -54,4 +54,4 @@ std::string selectRandomTemplate(const std::vector<TemplateEntry>& templates, st
 
     // Par défaut, retourner le dernier template
     return templates.back().name;
-} 
+}

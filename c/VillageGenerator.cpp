@@ -16,6 +16,7 @@
 #include <stdexcept>
 #include <cstdlib>
 #include <unordered_map>
+#include <string_view>
 #include <numeric>
 
 // JigsawBlocks data - inclure avant les headers générés
@@ -164,7 +165,7 @@ static std::vector<BlockJigsawInfo> getShuffledJigsawBlocks(
 
 // Cache for candidate jigsaw blocks (template + rotation + villageType), origin-based
 struct JigsawCacheKey {
-    std::string name;
+    std::string_view name;
     VillageType type;
     BlockRotation rot;
     bool operator==(const JigsawCacheKey& other) const {
@@ -174,7 +175,7 @@ struct JigsawCacheKey {
 
 struct JigsawCacheKeyHash {
     size_t operator()(const JigsawCacheKey& k) const {
-        size_t h = std::hash<std::string>()(k.name);
+        size_t h = std::hash<std::string_view>()(k.name);
         h = h * 1315423911u + static_cast<size_t>(k.type);
         h = h * 1315423911u + static_cast<size_t>(k.rot);
         return h;
@@ -182,14 +183,14 @@ struct JigsawCacheKeyHash {
 };
 
 static const std::vector<BlockJigsawInfo>& getCachedJigsawBlocksOrigin(
-    const std::string& templateName, VillageType villageType, BlockRotation rotation)
+    std::string_view templateName, VillageType villageType, BlockRotation rotation)
 {
     static std::unordered_map<JigsawCacheKey, std::vector<BlockJigsawInfo>, JigsawCacheKeyHash> cache;
     JigsawCacheKey key{templateName, villageType, rotation};
     auto it = cache.find(key);
     if (it != cache.end()) return it->second;
 
-    std::vector<JigsawEntry> entries = getJigsawBlocksForTemplate(templateName, villageType);
+    std::vector<JigsawEntry> entries = getJigsawBlocksForTemplate(std::string(templateName), villageType);
     std::vector<BlockJigsawInfo> list;
     list.reserve(entries.size());
     for (const auto& e : entries) {
@@ -409,7 +410,7 @@ public:
 
             // --- Template expansion + shuffle ---
             uint64_t t_te0 = prof ? vg_now_ns() : 0;
-            std::vector<std::string> list;
+            std::vector<std::string_view> list;
             if (depth != maxDepth && !mainTemplates.empty()) {
                 size_t total = 0;
                 for (const auto& t : mainTemplates) total += t.weight;
@@ -425,7 +426,7 @@ public:
                 }
             }
             if (!fallbackTemplates.empty()) {
-                std::vector<std::string> listtmp;
+                std::vector<std::string_view> listtmp;
                 size_t total = 0;
                 for (const auto& t : fallbackTemplates) total += t.weight;
                 listtmp.reserve(total);
@@ -438,18 +439,18 @@ public:
                     rand.shuffle(listtmp);
                     rand.advance(1);
                 }
-                for (const auto& s : listtmp) list.push_back(s);
+                list.insert(list.end(), listtmp.begin(), listtmp.end());
             }
             if (prof) {
                 vg_ns_template_expand += (vg_now_ns() - t_te0);
             }
 
-            for (const std::string& jigsawpiece1 : list) {
+            for (std::string_view jigsawpiece1 : list) {
                 if (jigsawpiece1 == "empty") break;
                 auto rotations = BlockRotationHelper::getShuffled(rand);
                 for (BlockRotation rotation1 : rotations) {
                     BPos size1;
-                    bool hasSize = get_bpos(jigsawpiece1.c_str(), &size1);
+                    bool hasSize = get_bpos(jigsawpiece1.data(), &size1);
                     BlockBox box1(0, 0, 0, 0, 0, 0);
                     if (hasSize) box1 = BlockBox::getBoundingBox(BPos(0, 0, 0), rotation1, size1);
                     // --- Jigsaw blocks for candidate ---
@@ -536,7 +537,7 @@ public:
                         mutableobject1->addCollision(BlockBox(box3.minX, box3.minY, box3.minZ,
                                                              box3.maxX + 1, box3.maxY + 1, box3.maxZ + 1));
                         auto newPiece = std::make_unique<Piece>(
-                            jigsawpiece1, blockpos5, box3, rotation1,
+                            std::string(jigsawpiece1), blockpos5, box3, rotation1,
                             pool->getPlacementBehaviour(jointType), depth + 1
                         );
                         if (depth + 1 <= maxDepth) {
@@ -548,7 +549,7 @@ public:
                     }
                 }
 
-            }
+            };
             next_jigsaw_block:;
         }
         // "other" = total tryPlacing time minus all explicitly measured sub-sections
@@ -570,7 +571,7 @@ private:
     VoxelShape* globalShape;  // VoxelShape partagé par toutes les pièces
     std::unique_ptr<SurfaceGenWrapper> heightMapGen;
     std::deque<Piece*> placing;
-    std::string selectRandomTemplate(const std::vector<TemplateEntry>& templates, std::mt19937_64& rng) {
+    std::string_view selectRandomTemplate(const std::vector<TemplateEntry>& templates, std::mt19937_64& rng) {
         if (templates.empty()) return "";
         std::uniform_int_distribution<size_t> dist(0, templates.size() - 1);
         return templates[dist(rng)].name;

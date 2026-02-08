@@ -977,4 +977,4 @@ public:
 std::unique_ptr<VillagePool> createVillagePool(VillageType type);
 
 // Fonction utilitaire pour la sélection aléatoire
-std::string selectRandomTemplate(const std::vector<TemplateEntry>& templates, std::mt19937& rng); 
+std::string_view selectRandomTemplate(const std::vector<TemplateEntry>& templates, std::mt19937& rng); 
