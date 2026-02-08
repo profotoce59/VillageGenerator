@@ -197,6 +197,8 @@ struct CandidateCache {
     std::vector<BlockJigsawInfo> list;
     std::vector<uint32_t> key;
     std::unordered_map<uint32_t, std::vector<int>> bucket;
+    bool hasSize = false;
+    BlockBox box1_origin{0, 0, 0, 0, 0, 0};
 };
 
 static inline uint32_t makeAttachKey(BlockDirection front, JointId jointId) {
@@ -215,6 +217,11 @@ static const CandidateCache& getCachedJigsawBlocksOrigin(
     CandidateCache cc;
     cc.list.reserve(entries.size());
     cc.key.reserve(entries.size());
+    BPos size;
+    if (get_bpos(templateName.data(), &size)) {
+        cc.hasSize = true;
+        cc.box1_origin = BlockBox::getBoundingBox(BPos(0, 0, 0), rotation, size);
+    }
     for (const auto& e : entries) {
         BPos rotated = BlockRotationHelper::rotate(e.localPos, rotation);
         BPos worldPos = rotated; // origin-based
@@ -308,6 +315,7 @@ static uint64_t vg_ns_pool = 0;              // pool getTemplates/fallback + pla
 static uint64_t vg_ns_preblock = 0;          // per jigsaw-block prework (dir/rel/inside)
 static uint64_t vg_ns_rotshuffle = 0;        // BlockRotationHelper::getShuffled
 static uint64_t vg_ns_size_lookup = 0;       // get_bpos size lookup
+static uint64_t vg_ns_bucket = 0;            // bucket compact (order + sort)
 static uint64_t vg_ns_other = 0;             // everything else in tryPlacing
 
 static uint64_t vg_calls_height = 0;
@@ -322,6 +330,7 @@ static uint64_t vg_calls_pool = 0;
 static uint64_t vg_calls_preblock = 0;
 static uint64_t vg_calls_rotshuffle = 0;
 static uint64_t vg_calls_size_lookup = 0;
+static uint64_t vg_calls_bucket = 0;
 static uint64_t vg_collision_boxes_scanned = 0; // total boxes checked in intersects
 
 void VillageGenerator_resetProfiling() {
@@ -339,6 +348,7 @@ void VillageGenerator_resetProfiling() {
     vg_ns_preblock = 0;
     vg_ns_rotshuffle = 0;
     vg_ns_size_lookup = 0;
+    vg_ns_bucket = 0;
     vg_ns_other = 0;
     vg_calls_height = 0;
     vg_calls_tryplacing = 0;
@@ -352,6 +362,7 @@ void VillageGenerator_resetProfiling() {
     vg_calls_preblock = 0;
     vg_calls_rotshuffle = 0;
     vg_calls_size_lookup = 0;
+    vg_calls_bucket = 0;
     vg_collision_boxes_scanned = 0;
 }
 
@@ -361,7 +372,8 @@ void VillageGenerator_printProfiling() {
     uint64_t total = vg_ns_height + vg_ns_jigsaw_piece + vg_ns_template_expand
                    + vg_ns_jigsaw_candidate + vg_ns_collision + vg_ns_attach
                    + vg_ns_bbox + vg_ns_place + vg_ns_expansionhack + vg_ns_pool
-                   + vg_ns_preblock + vg_ns_rotshuffle + vg_ns_size_lookup + vg_ns_other;
+                   + vg_ns_preblock + vg_ns_rotshuffle + vg_ns_size_lookup + vg_ns_bucket
+                   + vg_ns_other;
     auto pct = [&](uint64_t ns) { return total > 0 ? (ns * 100.0 / total) : 0.0; };
 
     std::cout << "\n--- tryPlacing internal breakdown ---" << std::endl;
@@ -389,6 +401,8 @@ void VillageGenerator_printProfiling() {
               << "  [" << vg_calls_rotshuffle << " calls]" << std::endl;
     std::cout << "Size lookup (get_bpos):    " << ms(vg_ns_size_lookup) << " ms (" << pct(vg_ns_size_lookup) << "%)"
               << "  [" << vg_calls_size_lookup << " calls]" << std::endl;
+    std::cout << "Bucket compact:            " << ms(vg_ns_bucket) << " ms (" << pct(vg_ns_bucket) << "%)"
+              << "  [" << vg_calls_bucket << " calls]" << std::endl;
     std::cout << "Other (bbox, attach, etc): " << ms(vg_ns_other) << " ms (" << pct(vg_ns_other) << "%)" << std::endl;
     std::cout << "Total tryPlacing:          " << ms(total) << " ms"
               << "  [" << vg_calls_tryplacing << " calls]" << std::endl;
@@ -443,6 +457,7 @@ public:
         uint64_t snap_pre = 0;
         uint64_t snap_rot = 0;
         uint64_t snap_size = 0;
+        uint64_t snap_bucket = 0;
         if (prof) {
             t_other0 = vg_now_ns();
             snap_jp = vg_ns_jigsaw_piece;
@@ -458,6 +473,7 @@ public:
             snap_pre = vg_ns_preblock;
             snap_rot = vg_ns_rotshuffle;
             snap_size = vg_ns_size_lookup;
+            snap_bucket = vg_ns_bucket;
         }
 
         auto pool = createVillagePool(villageType);
@@ -555,19 +571,12 @@ public:
                     vg_calls_rotshuffle++;
                 }
                 for (BlockRotation rotation1 : rotations) {
-                    BPos size1;
-                    uint64_t t_sz0 = prof ? vg_now_ns() : 0;
-                    bool hasSize = get_bpos(jigsawpiece1.data(), &size1);
-                    if (prof) {
-                        vg_ns_size_lookup += (vg_now_ns() - t_sz0);
-                        vg_calls_size_lookup++;
-                    }
-                    BlockBox box1(0, 0, 0, 0, 0, 0);
-                    if (hasSize) box1 = BlockBox::getBoundingBox(BPos(0, 0, 0), rotation1, size1);
                     // --- Jigsaw blocks for candidate ---
                     uint64_t t_jc0 = prof ? vg_now_ns() : 0;
                     const CandidateCache& candCache =
                         getCachedJigsawBlocksOrigin(jigsawpiece1, villageType, rotation1);
+                    bool hasSize = candCache.hasSize;
+                    BlockBox box1 = candCache.box1_origin;
                     const std::vector<BlockJigsawInfo>& baseList = candCache.list;
                     std::vector<int> indices;
                     indices.resize(baseList.size());
@@ -606,6 +615,7 @@ public:
                         continue;
                     }
 
+                    uint64_t t_bucket0 = prof ? vg_now_ns() : 0;
                     static thread_local std::vector<int> order;
                     static thread_local std::vector<int> match;
                     order.resize(indices.size());
@@ -616,6 +626,10 @@ public:
                     std::sort(match.begin(), match.end(), [&](int a, int b) {
                         return order[static_cast<size_t>(a)] < order[static_cast<size_t>(b)];
                     });
+                    if (prof) {
+                        vg_ns_bucket += (vg_now_ns() - t_bucket0);
+                        vg_calls_bucket++;
+                    }
 
                     for (int idx : match) {
                         uint64_t t_attach0 = prof ? vg_now_ns() : 0;
@@ -632,8 +646,10 @@ public:
                                        relativeBlockPos.z - blockPos3.z);
                         BlockBox box2(blockPos4.x, blockPos4.y, blockPos4.z,
                                       blockPos4.x, blockPos4.y, blockPos4.z);
-                        if (hasSize)
-                            box2 = BlockBox::getBoundingBox(blockPos4, rotation1, size1);
+                        if (hasSize) {
+                            box2 = box1;
+                            box2.move(blockPos4.x, blockPos4.y, blockPos4.z);
+                        }
                         int j1 = box2.minY;
                         bool flag2 = (pool->getPlacementBehaviour(jointType) == PlacementBehaviour::RIGID);
                         int k1 = blockPos3.y;
@@ -718,7 +734,7 @@ public:
                                       + (vg_ns_bbox - snap_bbox) + (vg_ns_place - snap_place)
                                       + (vg_ns_expansionhack - snap_exp) + (vg_ns_pool - snap_pool)
                                       + (vg_ns_preblock - snap_pre) + (vg_ns_rotshuffle - snap_rot)
-                                      + (vg_ns_size_lookup - snap_size);
+                                      + (vg_ns_size_lookup - snap_size) + (vg_ns_bucket - snap_bucket);
             vg_ns_other += totalThisCall - measuredThisCall;
         }
     }
