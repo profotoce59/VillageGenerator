@@ -18,6 +18,8 @@ double clamped_lerp(double a, double b, double t) {
 #include "rng.h"
 
 // ---------- cache (optionnel, simple chaîné) ----------
+#define START_SIZE_STEP_CELLS 2
+#define START_SIZE_MAX_TRIES 4
 static uint64_t pack_key(int x, int z) {
     return ( (uint64_t)( (uint32_t)x ) << 32 ) | (uint64_t)( (uint32_t)z );
 }
@@ -48,7 +50,7 @@ typedef struct {
     uint64_t ns_get_depth_and_scale;
 } SurfaceCache;
 
-#define PROFILE_ENABLED 0
+#define PROFILE_ENABLED 1
 
 static inline uint64_t now_ns(void) {
 #if PROFILE_ENABLED
@@ -275,7 +277,7 @@ void sample_noise_column(SurfaceGen *sg, double *buffer, int x, int z)
     }
  
 
-    for (int y = 0; y < sg->startSizeY; ++y) {
+    for (int y = 6; y <= sg->startSizeY; ++y) {
 
         // bruit principal 3D à (x,y,z) dans l'espace "cellule"
         uint64_t t3d0 = PROFILE_ENABLED ? now_ns() : 0;
@@ -347,71 +349,110 @@ int generate_column_from_y(SurfaceGen *sg, int x, int z,
     double percentX = (double)posX / (double)sg->chunkWidth;
     double percentZ = (double)posZ / (double)sg->chunkWidth;
     
-    // Échantillonner les 4 colonnes de bruit aux coins
-    const double *ds[4];
-    ds[0] = sample_noise_column_cached(sg, cellX, cellZ);
-    ds[1] = sample_noise_column_cached(sg, cellX, cellZ + 1);
-    ds[2] = sample_noise_column_cached(sg, cellX + 1, cellZ);
-    ds[3] = sample_noise_column_cached(sg, cellX + 1, cellZ + 1);
+    int tries = 0;
+    while (1) {
+        // Échantillonner les 4 colonnes de bruit aux coins
+        const double *ds[4];
+        ds[0] = sample_noise_column_cached(sg, cellX, cellZ);
+        ds[1] = sample_noise_column_cached(sg, cellX, cellZ + 1);
+        ds[2] = sample_noise_column_cached(sg, cellX + 1, cellZ);
+        ds[3] = sample_noise_column_cached(sg, cellX + 1, cellZ + 1);
 
-    double *tmp_ds[4] = {0};
-    if (!ds[0] || !ds[1] || !ds[2] || !ds[3]) {
-        int len = sg->noiseSizeY + 1;
-        for (int i = 0; i < 4; i++) {
-            tmp_ds[i] = (double*)calloc((size_t)len, sizeof(double));
+        double *tmp_ds[4] = {0};
+        if (!ds[0] || !ds[1] || !ds[2] || !ds[3]) {
+            int len = sg->noiseSizeY + 1;
+            for (int i = 0; i < 4; i++) {
+                tmp_ds[i] = (double*)calloc((size_t)len, sizeof(double));
+            }
+            sample_noise_column(sg, tmp_ds[0], cellX, cellZ);
+            sample_noise_column(sg, tmp_ds[1], cellX, cellZ + 1);
+            sample_noise_column(sg, tmp_ds[2], cellX + 1, cellZ);
+            sample_noise_column(sg, tmp_ds[3], cellX + 1, cellZ + 1);
+            ds[0] = tmp_ds[0];
+            ds[1] = tmp_ds[1];
+            ds[2] = tmp_ds[2];
+            ds[3] = tmp_ds[3];
         }
-        sample_noise_column(sg, tmp_ds[0], cellX, cellZ);
-        sample_noise_column(sg, tmp_ds[1], cellX, cellZ + 1);
-        sample_noise_column(sg, tmp_ds[2], cellX + 1, cellZ);
-        sample_noise_column(sg, tmp_ds[3], cellX + 1, cellZ + 1);
-        ds[0] = tmp_ds[0];
-        ds[1] = tmp_ds[1];
-        ds[2] = tmp_ds[2];
-        ds[3] = tmp_ds[3];
-    }
 
-    // Parcourir de haut en bas
-    for (int cellY = sg->startSizeY - 1; cellY >= 0; --cellY) {
-        double xyz = ds[0][cellY];
-        double xyz1 = ds[1][cellY];
-        double x1yz = ds[2][cellY];
-        double x1yz1 = ds[3][cellY];
-        double xy1z = ds[0][cellY + 1];
-        double xy1z1 = ds[1][cellY + 1];
-        double x1y1z = ds[2][cellY + 1];
-        double x1y1z1 = ds[3][cellY + 1];
-        
-        for (int posY = sg->chunkHeight - 1; posY >= 0; --posY) {
-            double percentY = (double)posY / (double)sg->chunkHeight;
+        if (sg->startSizeY <= 0) {
+            if (tmp_ds[0]) {
+                for (int i = 0; i < 4; i++) free(tmp_ds[i]);
+            }
+            return 0;
+        }
+
+        // Si le sommet est encore non-air, étendre startSizeY (comme Java)
+        int topCellY = sg->startSizeY - 1;
+        double xyzTop = ds[0][topCellY];
+        double xyz1Top = ds[1][topCellY];
+        double x1yzTop = ds[2][topCellY];
+        double x1yz1Top = ds[3][topCellY];
+        double xy1zTop = ds[0][topCellY + 1];
+        double xy1z1Top = ds[1][topCellY + 1];
+        double x1y1zTop = ds[2][topCellY + 1];
+        double x1y1z1Top = ds[3][topCellY + 1];
+        int topPosY = sg->chunkHeight - 1;
+        double percentTopY = (double)topPosY / (double)sg->chunkHeight;
+        double topNoise = lerp3(percentTopY, percentX, percentZ,
+                               xyzTop, xy1zTop, x1yzTop, x1y1zTop,
+                               xyz1Top, xy1z1Top, x1yz1Top, x1y1z1Top);
+        int topY = topCellY * sg->chunkHeight + topPosY;
+        Block topBlock = get_block_from_noise(topNoise, topY, user);
+        int topMatches = (predicate != NULL) ? predicate(topBlock, user) : 0;
+        if (topMatches && tries < START_SIZE_MAX_TRIES && sg->startSizeY < sg->noiseSizeY) {
+            int newStart = sg->startSizeY + START_SIZE_STEP_CELLS;
+            if (newStart > sg->noiseSizeY) newStart = sg->noiseSizeY;
+            if (newStart != sg->startSizeY) {
+                sg->startSizeY = newStart;
+                free_surface_cache(sg);
+            }
+            if (tmp_ds[0]) {
+                for (int i = 0; i < 4; i++) free(tmp_ds[i]);
+            }
+            tries++;
+            continue;
+        }
+
+        // Parcourir de haut en bas
+        for (int cellY = sg->startSizeY - 1; cellY >= 0; --cellY) {
+            double xyz = ds[0][cellY];
+            double xyz1 = ds[1][cellY];
+            double x1yz = ds[2][cellY];
+            double x1yz1 = ds[3][cellY];
+            double xy1z = ds[0][cellY + 1];
+            double xy1z1 = ds[1][cellY + 1];
+            double x1y1z = ds[2][cellY + 1];
+            double x1y1z1 = ds[3][cellY + 1];
             
-            // Interpolation trilinéaire (ordre Mojang)
-            double noise = lerp3(percentY, percentX, percentZ,
-                               xyz, xy1z, x1yz, x1y1z,
-                               xyz1, xy1z1, x1yz1, x1y1z1);
-            
-            int y = cellY * sg->chunkHeight + posY;
-            Block block = get_block_from_noise(noise, y, user);
+            for (int posY = sg->chunkHeight - 1; posY >= 0; --posY) {
+                double percentY = (double)posY / (double)sg->chunkHeight;
+                
+                // Interpolation trilinéaire (ordre Mojang)
+                double noise = lerp3(percentY, percentX, percentZ,
+                                   xyz, xy1z, x1yz, x1y1z,
+                                   xyz1, xy1z1, x1yz1, x1y1z1);
+                
+                int y = cellY * sg->chunkHeight + posY;
+                Block block = get_block_from_noise(noise, y, user);
 
-
-            
-
-            // Test du prédicat
-            if (predicate != NULL && predicate(block, user)) {
-                if (tmp_ds[0]) {
-                    for (int i = 0; i < 4; i++) {
-                        free(tmp_ds[i]);
+                // Test du prédicat
+                if (predicate != NULL && predicate(block, user)) {
+                    if (tmp_ds[0]) {
+                        for (int i = 0; i < 4; i++) {
+                            free(tmp_ds[i]);
+                        }
                     }
+                    return y + 1;
                 }
-                return y + 1;
             }
         }
-    }
-    if (tmp_ds[0]) {
-        for (int i = 0; i < 4; i++) {
-            free(tmp_ds[i]);
+        if (tmp_ds[0]) {
+            for (int i = 0; i < 4; i++) {
+                free(tmp_ds[i]);
+            }
         }
+        return 0;
     }
-    return 0;
 }
 
 // Implémentation de getBlockFromNoise

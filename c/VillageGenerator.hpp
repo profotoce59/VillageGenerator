@@ -160,4 +160,8 @@ private:
     bool getGoodMeetingPoint(Biome* biome, const std::string& template_name);
 
     // Internal helper classes will be defined in the cpp file
-}; 
+};
+
+// Profiling helpers
+void VillageGenerator_resetProfiling();
+void VillageGenerator_printProfiling();

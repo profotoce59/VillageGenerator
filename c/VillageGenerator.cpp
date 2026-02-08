@@ -1,5 +1,6 @@
 #include "VillageGenerator.hpp"
 #include <iostream>
+#include <ctime>
 #include "VillagePools.hpp"
 #include "BlockRotation.hpp"
 #include "VoxelShape.hpp"
@@ -13,6 +14,9 @@
 #include "SurfaceGenWrapper.hpp"
 #include <algorithm>
 #include <stdexcept>
+#include <cstdlib>
+#include <unordered_map>
+#include <numeric>
 
 // JigsawBlocks data - inclure avant les headers générés
 struct JigsawBlockEntry {
@@ -158,6 +162,45 @@ static std::vector<BlockJigsawInfo> getShuffledJigsawBlocks(
     return list;
 }
 
+// Cache for candidate jigsaw blocks (template + rotation + villageType), origin-based
+struct JigsawCacheKey {
+    std::string name;
+    VillageType type;
+    BlockRotation rot;
+    bool operator==(const JigsawCacheKey& other) const {
+        return type == other.type && rot == other.rot && name == other.name;
+    }
+};
+
+struct JigsawCacheKeyHash {
+    size_t operator()(const JigsawCacheKey& k) const {
+        size_t h = std::hash<std::string>()(k.name);
+        h = h * 1315423911u + static_cast<size_t>(k.type);
+        h = h * 1315423911u + static_cast<size_t>(k.rot);
+        return h;
+    }
+};
+
+static const std::vector<BlockJigsawInfo>& getCachedJigsawBlocksOrigin(
+    const std::string& templateName, VillageType villageType, BlockRotation rotation)
+{
+    static std::unordered_map<JigsawCacheKey, std::vector<BlockJigsawInfo>, JigsawCacheKeyHash> cache;
+    JigsawCacheKey key{templateName, villageType, rotation};
+    auto it = cache.find(key);
+    if (it != cache.end()) return it->second;
+
+    std::vector<JigsawEntry> entries = getJigsawBlocksForTemplate(templateName, villageType);
+    std::vector<BlockJigsawInfo> list;
+    list.reserve(entries.size());
+    for (const auto& e : entries) {
+        BPos rotated = BlockRotationHelper::rotate(e.localPos, rotation);
+        BPos worldPos = rotated; // origin-based
+        BlockDirection worldFront = BlockRotationHelper::rotate(e.front, rotation);
+        list.push_back({e.poolType, e.jointName, worldPos, worldFront});
+    }
+    return cache.emplace(std::move(key), std::move(list)).first->second;
+}
+
 static PoolType getFallbackPoolType(VillageType villageType, PoolType jointType) {
     (void)villageType;
     switch (jointType) {
@@ -195,7 +238,7 @@ static PoolType getFallbackPoolType(VillageType villageType, PoolType jointType)
 
 // Java isNotEmpty(mutableobject1, box3) → true si on peut placer
 // Vérifie: 1) la pièce est dans les bounds du village, 2) pas de collision
-static bool isNotEmpty(const VoxelShape* vs, const BlockBox& box) {
+static bool isNotEmpty(const VoxelShape* vs, const BlockBox& box, uint64_t* boxesScanned) {
     if (!vs || vs->isNull()) return true;
 
     // Vérifier les bounds (comme Java: box doit être DANS le VoxelShape)
@@ -207,7 +250,72 @@ static bool isNotEmpty(const VoxelShape* vs, const BlockBox& box) {
     }
 
     // Vérifier les collisions avec les pièces existantes
-    return !vs->intersects(box);
+    return !vs->intersects(box, boxesScanned);
+}
+
+// Profiling accumulators for inside VillageGenerator::tryPlacing
+static inline uint64_t vg_now_ns() {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
+}
+
+static inline bool vg_profile_enabled() {
+    static int enabled = -1;
+    if (enabled == -1) {
+        const char* env = std::getenv("VG_TRY_PROFILE");
+        enabled = (env && *env && *env != '0') ? 1 : 0;
+    }
+    return enabled == 1;
+}
+
+static uint64_t vg_ns_height = 0;            // height calc (noise)
+static uint64_t vg_ns_jigsaw_piece = 0;      // getShuffledJigsawBlocks for current piece
+static uint64_t vg_ns_template_expand = 0;   // template list expansion + shuffle
+static uint64_t vg_ns_jigsaw_candidate = 0;  // getShuffledJigsawBlocks for each candidate
+static uint64_t vg_ns_collision = 0;         // isNotEmpty (collision detection)
+static uint64_t vg_ns_other = 0;             // everything else in tryPlacing
+
+static uint64_t vg_calls_height = 0;
+static uint64_t vg_calls_tryplacing = 0;
+static uint64_t vg_calls_jigsaw_candidate = 0;
+static uint64_t vg_calls_collision = 0;
+static uint64_t vg_collision_boxes_scanned = 0; // total boxes checked in intersects
+
+void VillageGenerator_resetProfiling() {
+    if (!vg_profile_enabled()) return;
+    vg_ns_height = 0;
+    vg_ns_jigsaw_piece = 0;
+    vg_ns_template_expand = 0;
+    vg_ns_jigsaw_candidate = 0;
+    vg_ns_collision = 0;
+    vg_ns_other = 0;
+    vg_calls_height = 0;
+    vg_calls_tryplacing = 0;
+    vg_calls_jigsaw_candidate = 0;
+    vg_calls_collision = 0;
+    vg_collision_boxes_scanned = 0;
+}
+
+void VillageGenerator_printProfiling() {
+    if (!vg_profile_enabled()) return;
+    auto ms = [](uint64_t ns) { return ns / 1000000.0; };
+    uint64_t total = vg_ns_height + vg_ns_jigsaw_piece + vg_ns_template_expand
+                   + vg_ns_jigsaw_candidate + vg_ns_collision + vg_ns_other;
+    auto pct = [&](uint64_t ns) { return total > 0 ? (ns * 100.0 / total) : 0.0; };
+
+    std::cout << "\n--- tryPlacing internal breakdown ---" << std::endl;
+    std::cout << "Height calc (noise):       " << ms(vg_ns_height) << " ms (" << pct(vg_ns_height) << "%)"
+              << "  [" << vg_calls_height << " calls]" << std::endl;
+    std::cout << "Jigsaw blocks (piece):     " << ms(vg_ns_jigsaw_piece) << " ms (" << pct(vg_ns_jigsaw_piece) << "%)" << std::endl;
+    std::cout << "Template expand+shuffle:   " << ms(vg_ns_template_expand) << " ms (" << pct(vg_ns_template_expand) << "%)" << std::endl;
+    std::cout << "Jigsaw blocks (candidate): " << ms(vg_ns_jigsaw_candidate) << " ms (" << pct(vg_ns_jigsaw_candidate) << "%)"
+              << "  [" << vg_calls_jigsaw_candidate << " calls]" << std::endl;
+    std::cout << "Collision (isNotEmpty):    " << ms(vg_ns_collision) << " ms (" << pct(vg_ns_collision) << "%)"
+              << "  [" << vg_calls_collision << " calls, " << vg_collision_boxes_scanned << " boxes scanned]" << std::endl;
+    std::cout << "Other (bbox, attach, etc): " << ms(vg_ns_other) << " ms (" << pct(vg_ns_other) << "%)" << std::endl;
+    std::cout << "Total tryPlacing:          " << ms(total) << " ms"
+              << "  [" << vg_calls_tryplacing << " calls]" << std::endl;
 }
 
 class VillageGenerator::Assembler {
@@ -219,7 +327,7 @@ public:
         if (useHeightMapOptimizer && generator) {
             // Java: SurfaceGenerator2 dédié au heightMapOptimizer, avec startSizeY = heightY + 25
             heightMapGen = std::make_unique<SurfaceGenWrapper>(generator->getWorldSeed(), 19);
-            heightMapGen->setStartSizeYExact(heightY + 25);
+            heightMapGen->setStartSizeYExact(heightY + 16);
             heightMapGen->resetHeightCache();
         }
     }
@@ -231,6 +339,9 @@ public:
             Piece* p = placing.front();
             placing.pop_front();
             tryPlacing(villageType, p, rand, true);
+            if (vg_profile_enabled()) {
+                vg_calls_tryplacing++;
+            }
         }
     }
 
@@ -241,10 +352,31 @@ public:
         const BlockBox& box = piece->box;
         const int minY = box.minY;
 
+        const bool prof = vg_profile_enabled();
+        uint64_t t_other0 = 0;
+        uint64_t snap_jp = 0;
+        uint64_t snap_te = 0;
+        uint64_t snap_jc = 0;
+        uint64_t snap_col = 0;
+        uint64_t snap_h = 0;
+        if (prof) {
+            t_other0 = vg_now_ns();
+            snap_jp = vg_ns_jigsaw_piece;
+            snap_te = vg_ns_template_expand;
+            snap_jc = vg_ns_jigsaw_candidate;
+            snap_col = vg_ns_collision;
+            snap_h = vg_ns_height;
+        }
+
         auto pool = createVillagePool(villageType);
         if (!pool) return;
 
+        // --- Jigsaw blocks for current piece ---
+        uint64_t t_jp0 = prof ? vg_now_ns() : 0;
         std::vector<BlockJigsawInfo> jigsawBlocks = getShuffledJigsawBlocks(piece, villageType, rand);
+        if (prof) {
+            vg_ns_jigsaw_piece += (vg_now_ns() - t_jp0);
+        }
 
         VoxelShape mutableobject;
 
@@ -275,6 +407,8 @@ public:
                 mutableobject1 = globalShape;
             }
 
+            // --- Template expansion + shuffle ---
+            uint64_t t_te0 = prof ? vg_now_ns() : 0;
             std::vector<std::string> list;
             if (depth != maxDepth && !mainTemplates.empty()) {
                 size_t total = 0;
@@ -306,6 +440,9 @@ public:
                 }
                 for (const auto& s : listtmp) list.push_back(s);
             }
+            if (prof) {
+                vg_ns_template_expand += (vg_now_ns() - t_te0);
+            }
 
             for (const std::string& jigsawpiece1 : list) {
                 if (jigsawpiece1 == "empty") break;
@@ -315,13 +452,23 @@ public:
                     bool hasSize = get_bpos(jigsawpiece1.c_str(), &size1);
                     BlockBox box1(0, 0, 0, 0, 0, 0);
                     if (hasSize) box1 = BlockBox::getBoundingBox(BPos(0, 0, 0), rotation1, size1);
-                    VillageGenerator::Piece piece1(jigsawpiece1, BPos(0, 0, 0), box1, rotation1,
-                        pool->getPlacementBehaviour(jointType), 0);
-                    std::vector<BlockJigsawInfo> list1 = getShuffledJigsawBlocks(&piece1, villageType, rand);
+                    // --- Jigsaw blocks for candidate ---
+                    uint64_t t_jc0 = prof ? vg_now_ns() : 0;
+                    const std::vector<BlockJigsawInfo>& baseList =
+                        getCachedJigsawBlocksOrigin(jigsawpiece1, villageType, rotation1);
+                    std::vector<int> indices;
+                    indices.resize(baseList.size());
+                    std::iota(indices.begin(), indices.end(), 0);
+                    rand.shuffle(indices);
+                    if (prof) {
+                        vg_ns_jigsaw_candidate += (vg_now_ns() - t_jc0);
+                        vg_calls_jigsaw_candidate++;
+                    }
 
                     int i1 = 0;
                     if (expansionHack && (box1.maxY - box1.minY) <= 16) {
-                        for (const auto& j : list1) {
+                        for (int idx : indices) {
+                            const auto& j = baseList[static_cast<size_t>(idx)];
                             BPos d = BlockRotationHelper::getDirectionVector(j.front);
                             BPos rel(j.pos.x + d.x, j.pos.y + d.y, j.pos.z + d.z);
                             if (box1.contains(rel)) {
@@ -330,7 +477,8 @@ public:
                         }
                     }
 
-                    for (const BlockJigsawInfo& blockJigsawInfo2 : list1) {
+                    for (int idx : indices) {
+                        const BlockJigsawInfo& blockJigsawInfo2 = baseList[static_cast<size_t>(idx)];
                         bool canAttach = blockJigsawInfo.canAttach15(blockJigsawInfo2);
                         if (!canAttach) continue;
 
@@ -351,11 +499,15 @@ public:
                             i2 = minY + l1;
                         } else {
                             if (state == -1) {
+                                uint64_t th0 = prof ? vg_now_ns() : 0;
                                 if (useHeightMapOptimizer && heightMapGen) {
-                                    // Java heightMapOptimizer uses generateColumnfromY with (block != AIR)
                                     state = heightMapGen->generateColumnFromY(blockPos.x, blockPos.z, nullptr);
                                 } else {
                                     state = generator->getFirstHeightInColumn(blockPos.x, blockPos.z, nullptr);
+                                }
+                                if (prof) {
+                                    vg_ns_height += (vg_now_ns() - th0);
+                                    vg_calls_height++;
                                 }
                             }
                             i2 = state - k1;
@@ -368,9 +520,19 @@ public:
                             int k2 = std::max(i1 + 1, box3.maxY - box3.minY);
                             box3.maxY = box3.minY + k2;
                         }
-                        bool ok = isNotEmpty(mutableobject1, box3);
+
+                        // --- Collision detection ---
+                        bool ok;
+                        if (prof) {
+                            uint64_t t_col0 = vg_now_ns();
+                            ok = isNotEmpty(mutableobject1, box3, &vg_collision_boxes_scanned);
+                            vg_ns_collision += (vg_now_ns() - t_col0);
+                            vg_calls_collision++;
+                        } else {
+                            ok = isNotEmpty(mutableobject1, box3, nullptr);
+                        }
+
                         if (!ok) continue;
-                        // Java: mutableobject1.fullBoxes.add(new BlockBox(...))
                         mutableobject1->addCollision(BlockBox(box3.minX, box3.minY, box3.minZ,
                                                              box3.maxX + 1, box3.maxY + 1, box3.maxZ + 1));
                         auto newPiece = std::make_unique<Piece>(
@@ -381,13 +543,21 @@ public:
                             pieces.push_back(std::move(newPiece));
                             placing.push_back(pieces.back().get());
                         }
-                        
+
                         goto next_jigsaw_block;
                     }
                 }
 
             }
             next_jigsaw_block:;
+        }
+        // "other" = total tryPlacing time minus all explicitly measured sub-sections
+        if (prof) {
+            uint64_t totalThisCall = vg_now_ns() - t_other0;
+            uint64_t measuredThisCall = (vg_ns_jigsaw_piece - snap_jp) + (vg_ns_template_expand - snap_te)
+                                      + (vg_ns_jigsaw_candidate - snap_jc) + (vg_ns_collision - snap_col)
+                                      + (vg_ns_height - snap_h);
+            vg_ns_other += totalThisCall - measuredThisCall;
         }
     }
 
@@ -475,7 +645,10 @@ bool VillageGenerator::generate(TerrainGenerator* generator, int chunkX, int chu
     int centerZ = (box.minZ + box.maxZ) / 2;
 
     // 5) Ground Y using height map
+    uint64_t th_init0 = vg_now_ns();
     int heightY = generator->getHeightOnGround(centerX, centerZ);
+    vg_ns_height += (vg_now_ns() - th_init0);
+    vg_calls_height++;
     int y = bPos.y + heightY;
     int centerY = box.minY + 1;
 
