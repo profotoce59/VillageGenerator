@@ -46,6 +46,7 @@ public:
     void setHeightMapStartSizeY(int startSizeYBlocks) override;
     std::vector<void*> getColumnBlocks(int x, int z) override;
     bool canGenerate(int chunkX, int chunkZ) const override;
+    SurfaceGenWrapper* getSurfaceGenWrapper() { return surfaceGen.get(); }
 
 private:
     // Générateur de surface utilisant cubiomes

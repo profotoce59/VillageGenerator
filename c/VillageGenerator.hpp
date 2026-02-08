@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vector>
+#include <cstdint>
 #include <deque>
 #include <memory>
 #include <string>
@@ -107,7 +108,7 @@ class VoxelShape;
 // Info d'un bloc jigsaw (point d'attache) – comme Java BlockJigsawInfo
 struct BlockJigsawInfo {
     PoolType poolType;
-    std::string jointName;
+    uint16_t jointId;
     BPos pos;           // position monde (après rotation + offset)
     BlockDirection front;
 
@@ -160,4 +161,6 @@ private:
     bool getGoodMeetingPoint(Biome* biome, const std::string& template_name);
 
     // Internal helper classes will be defined in the cpp file
-}; 
+};
+
+// Profiling helpers

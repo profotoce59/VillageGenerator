@@ -13,6 +13,10 @@
 #include "SurfaceGenWrapper.hpp"
 #include <algorithm>
 #include <stdexcept>
+#include <cstdlib>
+#include <unordered_map>
+#include <string_view>
+#include <numeric>
 
 // JigsawBlocks data - inclure avant les headers générés
 struct JigsawBlockEntry {
@@ -29,6 +33,17 @@ struct JigsawBlockEntry {
 #include "jigsaw/TaigaVillageJigsawBlocks.hpp"
 #include "jigsaw/SavannaVillageJigsawBlocks.hpp"
 #include "jigsaw/SnowyVillageJigsawBlocks.hpp"
+
+using JointId = uint16_t;
+
+static JointId getJointId(std::string_view name) {
+    static std::unordered_map<std::string_view, JointId> map;
+    auto it = map.find(name);
+    if (it != map.end()) return it->second;
+    JointId id = static_cast<JointId>(map.size());
+    map.emplace(name, id);
+    return id;
+}
 
 // Helper function to convert Biome type to Village type
 static VillageType biomeToVillageType(const Biome* biome) {
@@ -78,10 +93,10 @@ BPos VillageGenerator::Piece::getTransformedPos(const BPos& relativePos) const {
     return BlockRotationHelper::rotate(relativePos, rotation);
 }
 
-// BlockJigsawInfo::canAttach15 – comme Java (direction opposée + même jointName)
+// BlockJigsawInfo::canAttach15 – comme Java (direction opposée + même jointId)
 bool BlockJigsawInfo::canAttach15(const BlockJigsawInfo& other) const {
     return BlockRotationHelper::getOpposite(other.front) == front
-        && jointName == other.jointName;
+        && jointId == other.jointId;
 }
 
 // BlockRotationHelper::getShuffled – Java BlockRotation.getShuffled(rand)
@@ -94,10 +109,10 @@ std::vector<BlockRotation> BlockRotationHelper::getShuffled(ChunkRand& rand) {
     return rots;
 }
 
-// Entrée jigsaw brute (template → liste (poolType, jointName, localPos, front))
+// Entrée jigsaw brute (template → liste (poolType, jointId, localPos, front))
 struct JigsawEntry {
     PoolType poolType;
-    std::string jointName;
+    JointId jointId;
     BPos localPos;
     BlockDirection front;
 };
@@ -133,7 +148,7 @@ static std::vector<JigsawEntry> getJigsawBlocksForTemplate(const std::string& na
         for (size_t i = 0; i < count; i++) {
             out.push_back({
                 data[i].poolType,
-                data[i].jointName,
+                getJointId(data[i].jointName),
                 BPos(data[i].x, data[i].y, data[i].z),
                 data[i].front
             });
@@ -152,10 +167,82 @@ static std::vector<BlockJigsawInfo> getShuffledJigsawBlocks(
         BPos rotated = BlockRotationHelper::rotate(e.localPos, piece->rotation);
         BPos worldPos = piece->pos.add(rotated.x, rotated.y, rotated.z);
         BlockDirection worldFront = BlockRotationHelper::rotate(e.front, piece->rotation);
-        list.push_back({e.poolType, e.jointName, worldPos, worldFront});
+        list.push_back({e.poolType, e.jointId, worldPos, worldFront});
     }
     rand.shuffle(list);
     return list;
+}
+
+// Cache for candidate jigsaw blocks (template + rotation + villageType), origin-based
+struct JigsawCacheKey {
+    std::string_view name;
+    VillageType type;
+    BlockRotation rot;
+    bool operator==(const JigsawCacheKey& other) const {
+        return type == other.type && rot == other.rot && name == other.name;
+    }
+};
+
+struct JigsawCacheKeyHash {
+    size_t operator()(const JigsawCacheKey& k) const {
+        size_t h = std::hash<std::string_view>()(k.name);
+        h = h * 1315423911u + static_cast<size_t>(k.type);
+        h = h * 1315423911u + static_cast<size_t>(k.rot);
+        return h;
+    }
+};
+
+struct CandidateCache {
+    std::vector<BlockJigsawInfo> list;
+    std::vector<uint32_t> key;
+    std::unordered_map<uint32_t, std::vector<int>> bucket;
+    bool hasSize = false;
+    BlockBox box1_origin{0, 0, 0, 0, 0, 0};
+    int expansionMax = 0;
+};
+
+static inline uint32_t makeAttachKey(BlockDirection front, JointId jointId) {
+    return (static_cast<uint32_t>(front) << 16) | static_cast<uint32_t>(jointId);
+}
+
+static const CandidateCache& getCachedJigsawBlocksOrigin(
+    std::string_view templateName, VillageType villageType, BlockRotation rotation)
+{
+    static std::unordered_map<JigsawCacheKey, CandidateCache, JigsawCacheKeyHash> cache;
+    JigsawCacheKey key{templateName, villageType, rotation};
+    auto it = cache.find(key);
+    if (it != cache.end()) return it->second;
+
+    std::vector<JigsawEntry> entries = getJigsawBlocksForTemplate(std::string(templateName), villageType);
+    CandidateCache cc;
+    cc.list.reserve(entries.size());
+    cc.key.reserve(entries.size());
+    BPos size;
+    if (get_bpos(templateName.data(), &size)) {
+        cc.hasSize = true;
+        cc.box1_origin = BlockBox::getBoundingBox(BPos(0, 0, 0), rotation, size);
+    }
+    for (const auto& e : entries) {
+        BPos rotated = BlockRotationHelper::rotate(e.localPos, rotation);
+        BPos worldPos = rotated; // origin-based
+        BlockDirection worldFront = BlockRotationHelper::rotate(e.front, rotation);
+        cc.list.push_back({e.poolType, e.jointId, worldPos, worldFront});
+        uint32_t k = makeAttachKey(worldFront, e.jointId);
+        cc.key.push_back(k);
+        cc.bucket[k].push_back(static_cast<int>(cc.list.size() - 1));
+    }
+    if (cc.hasSize) {
+        int maxY = 0;
+        for (const auto& j : cc.list) {
+            BPos d = BlockRotationHelper::getDirectionVector(j.front);
+            BPos rel(j.pos.x + d.x, j.pos.y + d.y, j.pos.z + d.z);
+            if (cc.box1_origin.contains(rel)) {
+                maxY = std::max(maxY, getPoolYMax(j.poolType));
+            }
+        }
+        cc.expansionMax = maxY;
+    }
+    return cache.emplace(std::move(key), std::move(cc)).first->second;
 }
 
 static PoolType getFallbackPoolType(VillageType villageType, PoolType jointType) {
@@ -195,7 +282,7 @@ static PoolType getFallbackPoolType(VillageType villageType, PoolType jointType)
 
 // Java isNotEmpty(mutableobject1, box3) → true si on peut placer
 // Vérifie: 1) la pièce est dans les bounds du village, 2) pas de collision
-static bool isNotEmpty(const VoxelShape* vs, const BlockBox& box) {
+static bool isNotEmpty(const VoxelShape* vs, const BlockBox& box, uint64_t* boxesScanned) {
     if (!vs || vs->isNull()) return true;
 
     // Vérifier les bounds (comme Java: box doit être DANS le VoxelShape)
@@ -207,7 +294,7 @@ static bool isNotEmpty(const VoxelShape* vs, const BlockBox& box) {
     }
 
     // Vérifier les collisions avec les pièces existantes
-    return !vs->intersects(box);
+    return !vs->intersects(box, boxesScanned);
 }
 
 class VillageGenerator::Assembler {
@@ -219,7 +306,7 @@ public:
         if (useHeightMapOptimizer && generator) {
             // Java: SurfaceGenerator2 dédié au heightMapOptimizer, avec startSizeY = heightY + 25
             heightMapGen = std::make_unique<SurfaceGenWrapper>(generator->getWorldSeed(), 19);
-            heightMapGen->setStartSizeYExact(heightY + 25);
+            heightMapGen->setStartSizeYExact(heightY + 16);
             heightMapGen->resetHeightCache();
         }
     }
@@ -227,23 +314,25 @@ public:
     void addToPlacing(Piece* piece) { placing.push_back(piece); }
 
     void run(VillageType villageType, ChunkRand& rand) {
+        auto pool = createVillagePool(villageType);
+        if (!pool) return;
         while (!placing.empty()) {
             Piece* p = placing.front();
             placing.pop_front();
-            tryPlacing(villageType, p, rand, true);
+            tryPlacing(villageType, pool.get(), p, rand, true);
         }
     }
 
-    void tryPlacing(VillageType villageType, Piece* piece, ChunkRand& rand, bool expansionHack) {
+    void tryPlacing(VillageType villageType, VillagePool* pool, Piece* piece, ChunkRand& rand, bool expansionHack) {
         const int depth = piece->depth;
         const BPos pos = piece->pos;
         const bool isRigid = (piece->placementBehaviour == PlacementBehaviour::RIGID);
         const BlockBox& box = piece->box;
         const int minY = box.minY;
 
-        auto pool = createVillagePool(villageType);
         if (!pool) return;
 
+        // --- Jigsaw blocks for current piece ---
         std::vector<BlockJigsawInfo> jigsawBlocks = getShuffledJigsawBlocks(piece, villageType, rand);
 
         VoxelShape mutableobject;
@@ -275,7 +364,8 @@ public:
                 mutableobject1 = globalShape;
             }
 
-            std::vector<std::string> list;
+            // --- Template expansion + shuffle ---
+            std::vector<std::string_view> list;
             if (depth != maxDepth && !mainTemplates.empty()) {
                 size_t total = 0;
                 for (const auto& t : mainTemplates) total += t.weight;
@@ -291,7 +381,7 @@ public:
                 }
             }
             if (!fallbackTemplates.empty()) {
-                std::vector<std::string> listtmp;
+                std::vector<std::string_view> listtmp;
                 size_t total = 0;
                 for (const auto& t : fallbackTemplates) total += t.weight;
                 listtmp.reserve(total);
@@ -304,35 +394,55 @@ public:
                     rand.shuffle(listtmp);
                     rand.advance(1);
                 }
-                for (const auto& s : listtmp) list.push_back(s);
+                list.insert(list.end(), listtmp.begin(), listtmp.end());
             }
 
-            for (const std::string& jigsawpiece1 : list) {
+            for (std::string_view jigsawpiece1 : list) {
                 if (jigsawpiece1 == "empty") break;
                 auto rotations = BlockRotationHelper::getShuffled(rand);
                 for (BlockRotation rotation1 : rotations) {
-                    BPos size1;
-                    bool hasSize = get_bpos(jigsawpiece1.c_str(), &size1);
-                    BlockBox box1(0, 0, 0, 0, 0, 0);
-                    if (hasSize) box1 = BlockBox::getBoundingBox(BPos(0, 0, 0), rotation1, size1);
-                    VillageGenerator::Piece piece1(jigsawpiece1, BPos(0, 0, 0), box1, rotation1,
-                        pool->getPlacementBehaviour(jointType), 0);
-                    std::vector<BlockJigsawInfo> list1 = getShuffledJigsawBlocks(&piece1, villageType, rand);
+                    // --- Jigsaw blocks for candidate (cache lookup only) ---
+                    const CandidateCache& candCache =
+                        getCachedJigsawBlocksOrigin(jigsawpiece1, villageType, rotation1);
+                    bool hasSize = candCache.hasSize;
+                    BlockBox box1 = candCache.box1_origin;
+                    const std::vector<BlockJigsawInfo>& baseList = candCache.list;
+                    static thread_local std::vector<int> indices;
+                    indices.resize(baseList.size());
+                    std::iota(indices.begin(), indices.end(), 0);
+                    if (indices.size() > 1) {
+                        rand.shuffle(indices);
+                    }
+
+                    uint32_t targetKey = makeAttachKey(
+                        BlockRotationHelper::getOpposite(blockJigsawInfo.front),
+                        blockJigsawInfo.jointId
+                    );
+                    auto bucketIt = candCache.bucket.find(targetKey);
 
                     int i1 = 0;
                     if (expansionHack && (box1.maxY - box1.minY) <= 16) {
-                        for (const auto& j : list1) {
-                            BPos d = BlockRotationHelper::getDirectionVector(j.front);
-                            BPos rel(j.pos.x + d.x, j.pos.y + d.y, j.pos.z + d.z);
-                            if (box1.contains(rel)) {
-                                i1 = std::max(i1, getPoolYMax(j.poolType));
-                            }
-                        }
+                        i1 = candCache.expansionMax;
                     }
 
-                    for (const BlockJigsawInfo& blockJigsawInfo2 : list1) {
-                        bool canAttach = blockJigsawInfo.canAttach15(blockJigsawInfo2);
-                        if (!canAttach) continue;
+                    if (bucketIt == candCache.bucket.end()) {
+                        // no possible matches for this (front, jointId)
+                        continue;
+                    }
+
+                    static thread_local std::vector<int> order;
+                    static thread_local std::vector<int> match;
+                    order.resize(indices.size());
+                    for (size_t pos = 0; pos < indices.size(); ++pos) {
+                        order[static_cast<size_t>(indices[pos])] = static_cast<int>(pos);
+                    }
+                    match.assign(bucketIt->second.begin(), bucketIt->second.end());
+                    std::sort(match.begin(), match.end(), [&](int a, int b) {
+                        return order[static_cast<size_t>(a)] < order[static_cast<size_t>(b)];
+                    });
+
+                    for (int idx : match) {
+                        const BlockJigsawInfo& blockJigsawInfo2 = baseList[static_cast<size_t>(idx)];
 
                         BPos blockPos3 = blockJigsawInfo2.pos;
                         BPos blockPos4(relativeBlockPos.x - blockPos3.x,
@@ -340,8 +450,10 @@ public:
                                        relativeBlockPos.z - blockPos3.z);
                         BlockBox box2(blockPos4.x, blockPos4.y, blockPos4.z,
                                       blockPos4.x, blockPos4.y, blockPos4.z);
-                        if (hasSize)
-                            box2 = BlockBox::getBoundingBox(blockPos4, rotation1, size1);
+                        if (hasSize) {
+                            box2 = box1;
+                            box2.move(blockPos4.x, blockPos4.y, blockPos4.z);
+                        }
                         int j1 = box2.minY;
                         bool flag2 = (pool->getPlacementBehaviour(jointType) == PlacementBehaviour::RIGID);
                         int k1 = blockPos3.y;
@@ -352,7 +464,6 @@ public:
                         } else {
                             if (state == -1) {
                                 if (useHeightMapOptimizer && heightMapGen) {
-                                    // Java heightMapOptimizer uses generateColumnfromY with (block != AIR)
                                     state = heightMapGen->generateColumnFromY(blockPos.x, blockPos.z, nullptr);
                                 } else {
                                     state = generator->getFirstHeightInColumn(blockPos.x, blockPos.z, nullptr);
@@ -368,25 +479,27 @@ public:
                             int k2 = std::max(i1 + 1, box3.maxY - box3.minY);
                             box3.maxY = box3.minY + k2;
                         }
-                        bool ok = isNotEmpty(mutableobject1, box3);
+
+                        // --- Collision detection ---
+                        bool ok = isNotEmpty(mutableobject1, box3, nullptr);
+
                         if (!ok) continue;
-                        // Java: mutableobject1.fullBoxes.add(new BlockBox(...))
                         mutableobject1->addCollision(BlockBox(box3.minX, box3.minY, box3.minZ,
                                                              box3.maxX + 1, box3.maxY + 1, box3.maxZ + 1));
                         auto newPiece = std::make_unique<Piece>(
-                            jigsawpiece1, blockpos5, box3, rotation1,
+                            std::string(jigsawpiece1), blockpos5, box3, rotation1,
                             pool->getPlacementBehaviour(jointType), depth + 1
                         );
                         if (depth + 1 <= maxDepth) {
                             pieces.push_back(std::move(newPiece));
                             placing.push_back(pieces.back().get());
                         }
-                        
+
                         goto next_jigsaw_block;
                     }
                 }
 
-            }
+            };
             next_jigsaw_block:;
         }
     }
@@ -400,7 +513,7 @@ private:
     VoxelShape* globalShape;  // VoxelShape partagé par toutes les pièces
     std::unique_ptr<SurfaceGenWrapper> heightMapGen;
     std::deque<Piece*> placing;
-    std::string selectRandomTemplate(const std::vector<TemplateEntry>& templates, std::mt19937_64& rng) {
+    std::string_view selectRandomTemplate(const std::vector<TemplateEntry>& templates, std::mt19937_64& rng) {
         if (templates.empty()) return "";
         std::uniform_int_distribution<size_t> dist(0, templates.size() - 1);
         return templates[dist(rng)].name;
