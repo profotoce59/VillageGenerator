@@ -569,7 +569,6 @@ public:
                     const CandidateCache& candCache =
                         getCachedJigsawBlocksOrigin(jigsawpiece1, villageType, rotation1);
                     const std::vector<BlockJigsawInfo>& baseList = candCache.list;
-                    const std::vector<uint32_t>& keyList = candCache.key;
                     std::vector<int> indices;
                     indices.resize(baseList.size());
                     std::iota(indices.begin(), indices.end(), 0);
@@ -607,15 +606,19 @@ public:
                         continue;
                     }
 
-                    for (int idx : indices) {
+                    static thread_local std::vector<int> order;
+                    static thread_local std::vector<int> match;
+                    order.resize(indices.size());
+                    for (size_t pos = 0; pos < indices.size(); ++pos) {
+                        order[static_cast<size_t>(indices[pos])] = static_cast<int>(pos);
+                    }
+                    match.assign(bucketIt->second.begin(), bucketIt->second.end());
+                    std::sort(match.begin(), match.end(), [&](int a, int b) {
+                        return order[static_cast<size_t>(a)] < order[static_cast<size_t>(b)];
+                    });
+
+                    for (int idx : match) {
                         uint64_t t_attach0 = prof ? vg_now_ns() : 0;
-                        if (keyList[static_cast<size_t>(idx)] != targetKey) {
-                            if (prof) {
-                                vg_ns_attach += (vg_now_ns() - t_attach0);
-                                vg_calls_attach++;
-                            }
-                            continue;
-                        }
                         const BlockJigsawInfo& blockJigsawInfo2 = baseList[static_cast<size_t>(idx)];
                         if (prof) {
                             vg_ns_attach += (vg_now_ns() - t_attach0);
