@@ -107,7 +107,7 @@ class VoxelShape;
 // Info d'un bloc jigsaw (point d'attache) – comme Java BlockJigsawInfo
 struct BlockJigsawInfo {
     PoolType poolType;
-    std::string jointName;
+    uint16_t jointId;
     BPos pos;           // position monde (après rotation + offset)
     BlockDirection front;
 
