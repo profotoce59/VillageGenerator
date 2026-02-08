@@ -199,6 +199,7 @@ struct CandidateCache {
     std::unordered_map<uint32_t, std::vector<int>> bucket;
     bool hasSize = false;
     BlockBox box1_origin{0, 0, 0, 0, 0, 0};
+    int expansionMax = 0;
 };
 
 static inline uint32_t makeAttachKey(BlockDirection front, JointId jointId) {
@@ -230,6 +231,17 @@ static const CandidateCache& getCachedJigsawBlocksOrigin(
         uint32_t k = makeAttachKey(worldFront, e.jointId);
         cc.key.push_back(k);
         cc.bucket[k].push_back(static_cast<int>(cc.list.size() - 1));
+    }
+    if (cc.hasSize) {
+        int maxY = 0;
+        for (const auto& j : cc.list) {
+            BPos d = BlockRotationHelper::getDirectionVector(j.front);
+            BPos rel(j.pos.x + d.x, j.pos.y + d.y, j.pos.z + d.z);
+            if (cc.box1_origin.contains(rel)) {
+                maxY = std::max(maxY, getPoolYMax(j.poolType));
+            }
+        }
+        cc.expansionMax = maxY;
     }
     return cache.emplace(std::move(key), std::move(cc)).first->second;
 }
@@ -312,6 +324,7 @@ static uint64_t vg_ns_bbox = 0;              // bounding box / position math (ex
 static uint64_t vg_ns_place = 0;             // addCollision + new piece push
 static uint64_t vg_ns_expansionhack = 0;     // i1 expansionHack loop
 static uint64_t vg_ns_pool = 0;              // pool getTemplates/fallback + placement behaviour
+static uint64_t vg_ns_block_setup = 0;       // per-block setup (dir/rel/y/state/poolType)
 static uint64_t vg_ns_preblock = 0;          // per jigsaw-block prework (dir/rel/inside)
 static uint64_t vg_ns_rotshuffle = 0;        // BlockRotationHelper::getShuffled
 static uint64_t vg_ns_size_lookup = 0;       // get_bpos size lookup
@@ -327,6 +340,7 @@ static uint64_t vg_calls_bbox = 0;
 static uint64_t vg_calls_place = 0;
 static uint64_t vg_calls_expansionhack = 0;
 static uint64_t vg_calls_pool = 0;
+static uint64_t vg_calls_block_setup = 0;
 static uint64_t vg_calls_preblock = 0;
 static uint64_t vg_calls_rotshuffle = 0;
 static uint64_t vg_calls_size_lookup = 0;
@@ -345,6 +359,7 @@ void VillageGenerator_resetProfiling() {
     vg_ns_place = 0;
     vg_ns_expansionhack = 0;
     vg_ns_pool = 0;
+    vg_ns_block_setup = 0;
     vg_ns_preblock = 0;
     vg_ns_rotshuffle = 0;
     vg_ns_size_lookup = 0;
@@ -359,6 +374,7 @@ void VillageGenerator_resetProfiling() {
     vg_calls_place = 0;
     vg_calls_expansionhack = 0;
     vg_calls_pool = 0;
+    vg_calls_block_setup = 0;
     vg_calls_preblock = 0;
     vg_calls_rotshuffle = 0;
     vg_calls_size_lookup = 0;
@@ -372,7 +388,7 @@ void VillageGenerator_printProfiling() {
     uint64_t total = vg_ns_height + vg_ns_jigsaw_piece + vg_ns_template_expand
                    + vg_ns_jigsaw_candidate + vg_ns_collision + vg_ns_attach
                    + vg_ns_bbox + vg_ns_place + vg_ns_expansionhack + vg_ns_pool
-                   + vg_ns_preblock + vg_ns_rotshuffle + vg_ns_size_lookup + vg_ns_bucket
+                   + vg_ns_block_setup + vg_ns_preblock + vg_ns_rotshuffle + vg_ns_size_lookup + vg_ns_bucket
                    + vg_ns_other;
     auto pct = [&](uint64_t ns) { return total > 0 ? (ns * 100.0 / total) : 0.0; };
 
@@ -395,6 +411,8 @@ void VillageGenerator_printProfiling() {
               << "  [" << vg_calls_expansionhack << " calls]" << std::endl;
     std::cout << "Pool lookups:              " << ms(vg_ns_pool) << " ms (" << pct(vg_ns_pool) << "%)"
               << "  [" << vg_calls_pool << " calls]" << std::endl;
+    std::cout << "Block setup:               " << ms(vg_ns_block_setup) << " ms (" << pct(vg_ns_block_setup) << "%)"
+              << "  [" << vg_calls_block_setup << " calls]" << std::endl;
     std::cout << "Pre-block setup:           " << ms(vg_ns_preblock) << " ms (" << pct(vg_ns_preblock) << "%)"
               << "  [" << vg_calls_preblock << " calls]" << std::endl;
     std::cout << "Rotation shuffle:          " << ms(vg_ns_rotshuffle) << " ms (" << pct(vg_ns_rotshuffle) << "%)"
@@ -425,17 +443,19 @@ public:
     void addToPlacing(Piece* piece) { placing.push_back(piece); }
 
     void run(VillageType villageType, ChunkRand& rand) {
+        auto pool = createVillagePool(villageType);
+        if (!pool) return;
         while (!placing.empty()) {
             Piece* p = placing.front();
             placing.pop_front();
-            tryPlacing(villageType, p, rand, true);
+            tryPlacing(villageType, pool.get(), p, rand, true);
             if (vg_profile_enabled()) {
                 vg_calls_tryplacing++;
             }
         }
     }
 
-    void tryPlacing(VillageType villageType, Piece* piece, ChunkRand& rand, bool expansionHack) {
+    void tryPlacing(VillageType villageType, VillagePool* pool, Piece* piece, ChunkRand& rand, bool expansionHack) {
         const int depth = piece->depth;
         const BPos pos = piece->pos;
         const bool isRigid = (piece->placementBehaviour == PlacementBehaviour::RIGID);
@@ -454,6 +474,7 @@ public:
         uint64_t snap_place = 0;
         uint64_t snap_exp = 0;
         uint64_t snap_pool = 0;
+        uint64_t snap_block_setup = 0;
         uint64_t snap_pre = 0;
         uint64_t snap_rot = 0;
         uint64_t snap_size = 0;
@@ -470,13 +491,13 @@ public:
             snap_place = vg_ns_place;
             snap_exp = vg_ns_expansionhack;
             snap_pool = vg_ns_pool;
+            snap_block_setup = vg_ns_block_setup;
             snap_pre = vg_ns_preblock;
             snap_rot = vg_ns_rotshuffle;
             snap_size = vg_ns_size_lookup;
             snap_bucket = vg_ns_bucket;
         }
 
-        auto pool = createVillagePool(villageType);
         if (!pool) return;
 
         // --- Jigsaw blocks for current piece ---
@@ -489,7 +510,7 @@ public:
         VoxelShape mutableobject;
 
         for (const BlockJigsawInfo& blockJigsawInfo : jigsawBlocks) {
-            uint64_t t_pre0 = prof ? vg_now_ns() : 0;
+            uint64_t t_setup0 = prof ? vg_now_ns() : 0;
             BlockDirection blockDirection = blockJigsawInfo.front;
             BPos blockPos = blockJigsawInfo.pos;
             BPos dirVec = BlockRotationHelper::getDirectionVector(blockDirection);
@@ -498,18 +519,30 @@ public:
             int state = -1;
 
             PoolType jointType = blockJigsawInfo.poolType;
+            if (prof) {
+                vg_ns_block_setup += (vg_now_ns() - t_setup0);
+                vg_calls_block_setup++;
+            }
+
             uint64_t t_pool0 = prof ? vg_now_ns() : 0;
             auto mainTemplates = pool->getTemplates(jointType);
-            if (mainTemplates.empty()) continue;
+            if (mainTemplates.empty()) {
+                if (prof) {
+                    vg_ns_pool += (vg_now_ns() - t_pool0);
+                    vg_calls_pool++;
+                }
+                continue;
+            }
 
             PoolType fallbackType = getFallbackPoolType(villageType, jointType);
             auto fallbackTemplates = pool->getTemplates(fallbackType);
-            if (fallbackTemplates.empty() && mainTemplates.empty()) continue;
             if (prof) {
                 vg_ns_pool += (vg_now_ns() - t_pool0);
                 vg_calls_pool++;
             }
+            if (fallbackTemplates.empty() && mainTemplates.empty()) continue;
 
+            uint64_t t_pre0 = prof ? vg_now_ns() : 0;
             bool isInside = box.contains(relativeBlockPos);
             VoxelShape* mutableobject1;
             if (isInside) {
@@ -596,14 +629,7 @@ public:
                     int i1 = 0;
                     if (expansionHack && (box1.maxY - box1.minY) <= 16) {
                         uint64_t t_exp0 = prof ? vg_now_ns() : 0;
-                        for (int idx : indices) {
-                            const auto& j = baseList[static_cast<size_t>(idx)];
-                            BPos d = BlockRotationHelper::getDirectionVector(j.front);
-                            BPos rel(j.pos.x + d.x, j.pos.y + d.y, j.pos.z + d.z);
-                            if (box1.contains(rel)) {
-                                i1 = std::max(i1, getPoolYMax(j.poolType));
-                            }
-                        }
+                        i1 = candCache.expansionMax;
                         if (prof) {
                             vg_ns_expansionhack += (vg_now_ns() - t_exp0);
                             vg_calls_expansionhack++;
@@ -733,7 +759,8 @@ public:
                                       + (vg_ns_height - snap_h) + (vg_ns_attach - snap_attach)
                                       + (vg_ns_bbox - snap_bbox) + (vg_ns_place - snap_place)
                                       + (vg_ns_expansionhack - snap_exp) + (vg_ns_pool - snap_pool)
-                                      + (vg_ns_preblock - snap_pre) + (vg_ns_rotshuffle - snap_rot)
+                                      + (vg_ns_block_setup - snap_block_setup) + (vg_ns_preblock - snap_pre)
+                                      + (vg_ns_rotshuffle - snap_rot)
                                       + (vg_ns_size_lookup - snap_size) + (vg_ns_bucket - snap_bucket);
             vg_ns_other += totalThisCall - measuredThisCall;
         }
