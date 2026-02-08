@@ -329,6 +329,10 @@ static uint64_t vg_ns_preblock = 0;          // per jigsaw-block prework (dir/re
 static uint64_t vg_ns_rotshuffle = 0;        // BlockRotationHelper::getShuffled
 static uint64_t vg_ns_size_lookup = 0;       // get_bpos size lookup
 static uint64_t vg_ns_bucket = 0;            // bucket compact (order + sort)
+static uint64_t vg_ns_list_build = 0;        // build list/listtmp
+static uint64_t vg_ns_list_shuffle = 0;      // shuffle list/listtmp
+static uint64_t vg_ns_indices_build = 0;     // indices resize + iota
+static uint64_t vg_ns_indices_shuffle = 0;   // shuffle indices
 static uint64_t vg_ns_other = 0;             // everything else in tryPlacing
 
 static uint64_t vg_calls_height = 0;
@@ -345,6 +349,10 @@ static uint64_t vg_calls_preblock = 0;
 static uint64_t vg_calls_rotshuffle = 0;
 static uint64_t vg_calls_size_lookup = 0;
 static uint64_t vg_calls_bucket = 0;
+static uint64_t vg_calls_list_build = 0;
+static uint64_t vg_calls_list_shuffle = 0;
+static uint64_t vg_calls_indices_build = 0;
+static uint64_t vg_calls_indices_shuffle = 0;
 static uint64_t vg_collision_boxes_scanned = 0; // total boxes checked in intersects
 
 void VillageGenerator_resetProfiling() {
@@ -364,6 +372,10 @@ void VillageGenerator_resetProfiling() {
     vg_ns_rotshuffle = 0;
     vg_ns_size_lookup = 0;
     vg_ns_bucket = 0;
+    vg_ns_list_build = 0;
+    vg_ns_list_shuffle = 0;
+    vg_ns_indices_build = 0;
+    vg_ns_indices_shuffle = 0;
     vg_ns_other = 0;
     vg_calls_height = 0;
     vg_calls_tryplacing = 0;
@@ -379,6 +391,10 @@ void VillageGenerator_resetProfiling() {
     vg_calls_rotshuffle = 0;
     vg_calls_size_lookup = 0;
     vg_calls_bucket = 0;
+    vg_calls_list_build = 0;
+    vg_calls_list_shuffle = 0;
+    vg_calls_indices_build = 0;
+    vg_calls_indices_shuffle = 0;
     vg_collision_boxes_scanned = 0;
 }
 
@@ -389,6 +405,7 @@ void VillageGenerator_printProfiling() {
                    + vg_ns_jigsaw_candidate + vg_ns_collision + vg_ns_attach
                    + vg_ns_bbox + vg_ns_place + vg_ns_expansionhack + vg_ns_pool
                    + vg_ns_block_setup + vg_ns_preblock + vg_ns_rotshuffle + vg_ns_size_lookup + vg_ns_bucket
+                   + vg_ns_list_build + vg_ns_list_shuffle + vg_ns_indices_build + vg_ns_indices_shuffle
                    + vg_ns_other;
     auto pct = [&](uint64_t ns) { return total > 0 ? (ns * 100.0 / total) : 0.0; };
 
@@ -421,6 +438,14 @@ void VillageGenerator_printProfiling() {
               << "  [" << vg_calls_size_lookup << " calls]" << std::endl;
     std::cout << "Bucket compact:            " << ms(vg_ns_bucket) << " ms (" << pct(vg_ns_bucket) << "%)"
               << "  [" << vg_calls_bucket << " calls]" << std::endl;
+    std::cout << "List build:                " << ms(vg_ns_list_build) << " ms (" << pct(vg_ns_list_build) << "%)"
+              << "  [" << vg_calls_list_build << " calls]" << std::endl;
+    std::cout << "List shuffle:              " << ms(vg_ns_list_shuffle) << " ms (" << pct(vg_ns_list_shuffle) << "%)"
+              << "  [" << vg_calls_list_shuffle << " calls]" << std::endl;
+    std::cout << "Indices build:             " << ms(vg_ns_indices_build) << " ms (" << pct(vg_ns_indices_build) << "%)"
+              << "  [" << vg_calls_indices_build << " calls]" << std::endl;
+    std::cout << "Indices shuffle:           " << ms(vg_ns_indices_shuffle) << " ms (" << pct(vg_ns_indices_shuffle) << "%)"
+              << "  [" << vg_calls_indices_shuffle << " calls]" << std::endl;
     std::cout << "Other (bbox, attach, etc): " << ms(vg_ns_other) << " ms (" << pct(vg_ns_other) << "%)" << std::endl;
     std::cout << "Total tryPlacing:          " << ms(total) << " ms"
               << "  [" << vg_calls_tryplacing << " calls]" << std::endl;
@@ -479,6 +504,10 @@ public:
         uint64_t snap_rot = 0;
         uint64_t snap_size = 0;
         uint64_t snap_bucket = 0;
+        uint64_t snap_list_build = 0;
+        uint64_t snap_list_shuffle = 0;
+        uint64_t snap_indices_build = 0;
+        uint64_t snap_indices_shuffle = 0;
         if (prof) {
             t_other0 = vg_now_ns();
             snap_jp = vg_ns_jigsaw_piece;
@@ -496,6 +525,10 @@ public:
             snap_rot = vg_ns_rotshuffle;
             snap_size = vg_ns_size_lookup;
             snap_bucket = vg_ns_bucket;
+            snap_list_build = vg_ns_list_build;
+            snap_list_shuffle = vg_ns_list_shuffle;
+            snap_indices_build = vg_ns_indices_build;
+            snap_indices_shuffle = vg_ns_indices_shuffle;
         }
 
         if (!pool) return;
@@ -562,6 +595,7 @@ public:
             uint64_t t_te0 = prof ? vg_now_ns() : 0;
             std::vector<std::string_view> list;
             if (depth != maxDepth && !mainTemplates.empty()) {
+                uint64_t t_lb0 = prof ? vg_now_ns() : 0;
                 size_t total = 0;
                 for (const auto& t : mainTemplates) total += t.weight;
                 list.reserve(total);
@@ -570,13 +604,23 @@ public:
                         list.push_back(t.name);
                     }
                 }
+                if (prof) {
+                    vg_ns_list_build += (vg_now_ns() - t_lb0);
+                    vg_calls_list_build++;
+                }
                 if (!list.empty()) {
+                    uint64_t t_ls0 = prof ? vg_now_ns() : 0;
                     rand.shuffle(list);
                     rand.advance(1);
+                    if (prof) {
+                        vg_ns_list_shuffle += (vg_now_ns() - t_ls0);
+                        vg_calls_list_shuffle++;
+                    }
                 }
             }
             if (!fallbackTemplates.empty()) {
                 std::vector<std::string_view> listtmp;
+                uint64_t t_lb1 = prof ? vg_now_ns() : 0;
                 size_t total = 0;
                 for (const auto& t : fallbackTemplates) total += t.weight;
                 listtmp.reserve(total);
@@ -585,9 +629,18 @@ public:
                         listtmp.push_back(t.name);
                     }
                 }
+                if (prof) {
+                    vg_ns_list_build += (vg_now_ns() - t_lb1);
+                    vg_calls_list_build++;
+                }
                 if (!listtmp.empty()) {
+                    uint64_t t_ls1 = prof ? vg_now_ns() : 0;
                     rand.shuffle(listtmp);
                     rand.advance(1);
+                    if (prof) {
+                        vg_ns_list_shuffle += (vg_now_ns() - t_ls1);
+                        vg_calls_list_shuffle++;
+                    }
                 }
                 list.insert(list.end(), listtmp.begin(), listtmp.end());
             }
@@ -604,20 +657,32 @@ public:
                     vg_calls_rotshuffle++;
                 }
                 for (BlockRotation rotation1 : rotations) {
-                    // --- Jigsaw blocks for candidate ---
+                    // --- Jigsaw blocks for candidate (cache lookup only) ---
                     uint64_t t_jc0 = prof ? vg_now_ns() : 0;
                     const CandidateCache& candCache =
                         getCachedJigsawBlocksOrigin(jigsawpiece1, villageType, rotation1);
-                    bool hasSize = candCache.hasSize;
-                    BlockBox box1 = candCache.box1_origin;
-                    const std::vector<BlockJigsawInfo>& baseList = candCache.list;
-                    std::vector<int> indices;
-                    indices.resize(baseList.size());
-                    std::iota(indices.begin(), indices.end(), 0);
-                    rand.shuffle(indices);
                     if (prof) {
                         vg_ns_jigsaw_candidate += (vg_now_ns() - t_jc0);
                         vg_calls_jigsaw_candidate++;
+                    }
+                    bool hasSize = candCache.hasSize;
+                    BlockBox box1 = candCache.box1_origin;
+                    const std::vector<BlockJigsawInfo>& baseList = candCache.list;
+                    static thread_local std::vector<int> indices;
+                    uint64_t t_ib0 = prof ? vg_now_ns() : 0;
+                    indices.resize(baseList.size());
+                    std::iota(indices.begin(), indices.end(), 0);
+                    if (prof) {
+                        vg_ns_indices_build += (vg_now_ns() - t_ib0);
+                        vg_calls_indices_build++;
+                    }
+                    if (indices.size() > 1) {
+                        uint64_t t_is0 = prof ? vg_now_ns() : 0;
+                        rand.shuffle(indices);
+                        if (prof) {
+                            vg_ns_indices_shuffle += (vg_now_ns() - t_is0);
+                            vg_calls_indices_shuffle++;
+                        }
                     }
 
                     uint32_t targetKey = makeAttachKey(
@@ -761,7 +826,9 @@ public:
                                       + (vg_ns_expansionhack - snap_exp) + (vg_ns_pool - snap_pool)
                                       + (vg_ns_block_setup - snap_block_setup) + (vg_ns_preblock - snap_pre)
                                       + (vg_ns_rotshuffle - snap_rot)
-                                      + (vg_ns_size_lookup - snap_size) + (vg_ns_bucket - snap_bucket);
+                                      + (vg_ns_size_lookup - snap_size) + (vg_ns_bucket - snap_bucket)
+                                      + (vg_ns_list_build - snap_list_build) + (vg_ns_list_shuffle - snap_list_shuffle)
+                                      + (vg_ns_indices_build - snap_indices_build) + (vg_ns_indices_shuffle - snap_indices_shuffle);
             vg_ns_other += totalThisCall - measuredThisCall;
         }
     }
