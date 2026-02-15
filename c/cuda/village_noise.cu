@@ -425,6 +425,21 @@ int cuda_noise_batch_heights(
             ctx->d_sn, ctx->d_cfg, ctx->d_columns,
             numColumns, ctx->d_noiseGrid
         );
+        CUDA_CHECK_INT(cudaGetLastError());
+        CUDA_CHECK_INT(cudaDeviceSynchronize());
+    }
+
+    // DEBUG: dump first column's noise values
+    {
+        int stride = ctx->hostCfg.noiseSizeY + 1;
+        int debugSize = startSizeY + 1;
+        double* debugBuf = new double[debugSize];
+        cudaMemcpy(debugBuf, ctx->d_noiseGrid, sizeof(double) * debugSize, cudaMemcpyDeviceToHost);
+        fprintf(stderr, "DEBUG noiseGrid col0 (stride=%d, startSizeY=%d):\n", stride, startSizeY);
+        for (int y = 0; y <= startSizeY && y < debugSize; y++) {
+            fprintf(stderr, "  y=%2d: %.6f\n", y, debugBuf[y]);
+        }
+        delete[] debugBuf;
     }
 
     // Kernel 2: compute heights
@@ -436,6 +451,8 @@ int cuda_noise_batch_heights(
             ctx->d_queries, ctx->d_cornerIndices,
             numQueries, ctx->d_results
         );
+        CUDA_CHECK_INT(cudaGetLastError());
+        CUDA_CHECK_INT(cudaDeviceSynchronize());
     }
 
     // Download results

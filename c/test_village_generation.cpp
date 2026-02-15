@@ -4,11 +4,17 @@
 #include <memory>
 #include <vector>
 #include <chrono>
-#include <sys/resource.h>
 #include <cstdio>
-#include <unistd.h>
-#if defined(__APPLE__)
+#if defined(_WIN32)
+#include <windows.h>
+#include <psapi.h>
+#elif defined(__APPLE__)
 #include <mach/mach.h>
+#include <sys/resource.h>
+#include <unistd.h>
+#else
+#include <sys/resource.h>
+#include <unistd.h>
 #endif
 
 #include "VillageGenerator.hpp"
@@ -117,24 +123,33 @@ static void checkWorldSeed(uint64_t structureSeed,
 }
 
 static long getMaxRssKb() {
+#if defined(_WIN32)
+    PROCESS_MEMORY_COUNTERS pmc;
+    if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc)))
+        return static_cast<long>(pmc.PeakWorkingSetSize / 1024);
+    return -1;
+#elif defined(__APPLE__)
     struct rusage usage {};
-    if (getrusage(RUSAGE_SELF, &usage) != 0) {
-        return -1;
-    }
-#if defined(__APPLE__)
-    return static_cast<long>(usage.ru_maxrss / 1024); // bytes -> KB on macOS
+    if (getrusage(RUSAGE_SELF, &usage) != 0) return -1;
+    return static_cast<long>(usage.ru_maxrss / 1024);
 #else
-    return static_cast<long>(usage.ru_maxrss); // already KB on Linux
+    struct rusage usage {};
+    if (getrusage(RUSAGE_SELF, &usage) != 0) return -1;
+    return static_cast<long>(usage.ru_maxrss);
 #endif
 }
 
 static long getCurrentRssKb() {
-#if defined(__APPLE__)
+#if defined(_WIN32)
+    PROCESS_MEMORY_COUNTERS pmc;
+    if (GetProcessMemoryInfo(GetCurrentProcess(), &pmc, sizeof(pmc)))
+        return static_cast<long>(pmc.WorkingSetSize / 1024);
+    return -1;
+#elif defined(__APPLE__)
     mach_task_basic_info info;
     mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
-    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t)&info, &count) != KERN_SUCCESS) {
+    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t)&info, &count) != KERN_SUCCESS)
         return -1;
-    }
     return static_cast<long>(info.resident_size / 1024);
 #elif defined(__linux__)
     FILE* f = std::fopen("/proc/self/statm", "r");
