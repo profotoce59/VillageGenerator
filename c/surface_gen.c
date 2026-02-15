@@ -41,24 +41,7 @@ typedef struct {
     int fifo_head;
     int fifo_tail;
     size_t count;
-
-    uint64_t ns_sample_noise_column;
-    uint64_t ns_sample_noise_3d;
-    uint64_t ns_sample_noise_2d;
-    uint64_t ns_get_depth_and_scale;
 } SurfaceCache;
-
-#define PROFILE_ENABLED 0
-
-static inline uint64_t now_ns(void) {
-#if PROFILE_ENABLED
-    struct timespec ts;
-    clock_gettime(CLOCK_MONOTONIC, &ts);
-    return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
-#else
-    return 0;
-#endif
-}
 
 static size_t next_pow2(size_t v) {
     size_t p = 1;
@@ -225,63 +208,26 @@ void get_surface_cache_stats(SurfaceGen *sg, size_t *hits, size_t *misses) {
     if (misses) *misses = sg->cache_misses;
 }
 
-void reset_surface_profile_stats(SurfaceGen *sg) {
-    SurfaceCache *C = get_cache(sg);
-    if (!C) return;
-    C->ns_sample_noise_column = 0;
-    C->ns_sample_noise_3d = 0;
-    C->ns_sample_noise_2d = 0;
-    C->ns_get_depth_and_scale = 0;
-}
 
-void get_surface_profile_stats(SurfaceGen *sg,
-    uint64_t *ns_sample_noise_column,
-    uint64_t *ns_sample_noise_3d,
-    uint64_t *ns_sample_noise_2d,
-    uint64_t *ns_get_depth_and_scale) {
-    SurfaceCache *C = get_cache(sg);
-    if (!C) return;
-    if (ns_sample_noise_column) *ns_sample_noise_column = C->ns_sample_noise_column;
-    if (ns_sample_noise_3d) *ns_sample_noise_3d = C->ns_sample_noise_3d;
-    if (ns_sample_noise_2d) *ns_sample_noise_2d = C->ns_sample_noise_2d;
-    if (ns_get_depth_and_scale) *ns_get_depth_and_scale = C->ns_get_depth_and_scale;
-}
 
 // ---------- cœur : sample_noise_column (branche 1.16+) ----------
 void sample_noise_column(SurfaceGen *sg, double *buffer, int x, int z)
 {
-    uint64_t t0 = PROFILE_ENABLED ? now_ns() : 0;
-    // ds = { depth, scale }
-    // TODO: get_depth_and_scale retourne des valeurs différentes de Java!
-    // Java: depth=-0.0162, scale=652.02
-    // C:    depth=-0.0066, scale=342.86
-    // Le problème est dans cubiomes_get_depth_and_scale (cubiomes_integration.c)
     double ds[2] = {0.0, 0.0};
-    uint64_t t_ds0 = PROFILE_ENABLED ? now_ns() : 0;
     sg->get_depth_and_scale(x, z, ds, sg->user);
-    uint64_t t_ds1 = PROFILE_ENABLED ? now_ns() : 0;
-    SurfaceCache *Cprof = get_cache(sg);
-    if (PROFILE_ENABLED && Cprof) Cprof->ns_get_depth_and_scale += (t_ds1 - t_ds0);
     double depth = ds[0];
     double scale = ds[1];
 
     // randomOffset (only Overworld)
     double randomOffset = 0.0;
     if (sg->dim == DIM_OVERWORLD && sg->sample_noise_2d) {
-        uint64_t t2d0 = PROFILE_ENABLED ? now_ns() : 0;
         randomOffset = sg->sample_noise_2d(x, z, sg->user);
-        uint64_t t2d1 = PROFILE_ENABLED ? now_ns() : 0;
-        if (PROFILE_ENABLED && Cprof) Cprof->ns_sample_noise_2d += (t2d1 - t2d0);
     }
  
 
     for (int y = 0; y < sg->startSizeY; ++y) {
 
-        // bruit principal 3D à (x,y,z) dans l'espace "cellule"
-        uint64_t t3d0 = PROFILE_ENABLED ? now_ns() : 0;
         double noise = sg->sample_noise_3d(x, y, z, sg->user);
-        uint64_t t3d1 = PROFILE_ENABLED ? now_ns() : 0;
-        if (PROFILE_ENABLED && Cprof) Cprof->ns_sample_noise_3d += (t3d1 - t3d0);
 
         // ==== branche 1.16+ ====
         double fallOff1 = 1.0 - (double)y * 2.0 / (double)sg->noiseSizeY + randomOffset;
@@ -309,9 +255,6 @@ void sample_noise_column(SurfaceGen *sg, double *buffer, int x, int z)
     buffer[y] = noise;
     }
 
-    // Optionnel: tu peux remplir buffer[0..5] si nécessaire pour tes usages.
-    uint64_t t1 = PROFILE_ENABLED ? now_ns() : 0;
-    if (PROFILE_ENABLED && Cprof) Cprof->ns_sample_noise_column += (t1 - t0);
 }
 
 // version avec cache (clé (x,z) → colonne)
@@ -410,6 +353,139 @@ int generate_column_from_y(SurfaceGen *sg, int x, int z,
         for (int i = 0; i < 4; i++) {
             free(tmp_ds[i]);
         }
+    }
+    return 0;
+}
+
+// Calcule la valeur de bruit à un seul y pour une colonne (x,z).
+// depth, scale, randomOffset doivent être pré-calculés.
+static inline double sample_noise_at_y(SurfaceGen *sg, int x, int y, int z,
+                                        double depth, double scale, double randomOffset)
+{
+    double noise = sg->sample_noise_3d(x, y, z, sg->user);
+
+    double fallOff1 = 1.0 - (double)y * 2.0 / (double)sg->noiseSizeY + randomOffset;
+    double fallOff2 = fallOff1 * sg->densityFactor + sg->densityOffset;
+    double fallOff3 = (fallOff2 + depth) * scale;
+
+    if (fallOff3 > 0.0)
+        noise = noise + fallOff3 * 4.0;
+    else
+        noise = noise + fallOff3;
+
+    if (sg->noiseSettings.topSlideSettings.size > 0.0) {
+        double num = ((double)(sg->noiseSizeY - y) - sg->noiseSettings.topSlideSettings.offset)
+                     / sg->noiseSettings.topSlideSettings.size;
+        noise = clamped_lerp(sg->noiseSettings.topSlideSettings.target, noise, num);
+    }
+    if (sg->noiseSettings.bottomSlideSettings.size > 0.0) {
+        double num = ((double)y - sg->noiseSettings.bottomSlideSettings.offset)
+                     / sg->noiseSettings.bottomSlideSettings.size;
+        noise = clamped_lerp(sg->noiseSettings.bottomSlideSettings.target, noise, num);
+    }
+    return noise;
+}
+
+// Pré-calcule depth/scale/randomOffset pour une colonne (x,z)
+static inline void get_column_params(SurfaceGen *sg, int x, int z,
+                                      double *depth, double *scale, double *randomOffset)
+{
+    double ds[2] = {0.0, 0.0};
+    sg->get_depth_and_scale(x, z, ds, sg->user);
+    *depth = ds[0];
+    *scale = ds[1];
+    *randomOffset = 0.0;
+    if (sg->dim == DIM_OVERWORLD && sg->sample_noise_2d) {
+        *randomOffset = sg->sample_noise_2d(x, z, sg->user);
+    }
+}
+
+// Version early-exit : tente d'abord le cache, puis calcule à la volée de haut en bas.
+// Pour les cache hits → utilise les colonnes complètes (identique à generate_column_from_y).
+// Pour les cache misses → calcule seulement les y nécessaires et s'arrête dès match.
+int generate_column_from_y_early_exit(SurfaceGen *sg, int x, int z,
+                                       BlockPredicate predicate, void *user)
+{
+    int cellX = (int)floor((double)x / (double)sg->chunkWidth);
+    int cellZ = (int)floor((double)z / (double)sg->chunkWidth);
+
+    int posX = ((x % sg->chunkWidth) + sg->chunkWidth) % sg->chunkWidth;
+    int posZ = ((z % sg->chunkWidth) + sg->chunkWidth) % sg->chunkWidth;
+
+    double percentX = (double)posX / (double)sg->chunkWidth;
+    double percentZ = (double)posZ / (double)sg->chunkWidth;
+
+    // Essayer le cache pour les 4 coins
+    uint64_t keys[4] = {
+        pack_key(cellX, cellZ), pack_key(cellX, cellZ + 1),
+        pack_key(cellX + 1, cellZ), pack_key(cellX + 1, cellZ + 1)
+    };
+    const double *cached[4] = {
+        cache_get(sg, keys[0]), cache_get(sg, keys[1]),
+        cache_get(sg, keys[2]), cache_get(sg, keys[3])
+    };
+
+    // Si toutes les colonnes sont cachées → fast path (pas de calcul de bruit)
+    if (cached[0] && cached[1] && cached[2] && cached[3]) {
+        for (int cellY = sg->startSizeY - 1; cellY >= 0; --cellY) {
+            double xyz = cached[0][cellY],   xyz1 = cached[1][cellY];
+            double x1yz = cached[2][cellY],  x1yz1 = cached[3][cellY];
+            double xy1z = cached[0][cellY+1], xy1z1 = cached[1][cellY+1];
+            double x1y1z = cached[2][cellY+1], x1y1z1 = cached[3][cellY+1];
+
+            for (int posY = sg->chunkHeight - 1; posY >= 0; --posY) {
+                double percentY = (double)posY / (double)sg->chunkHeight;
+                double noise = lerp3(percentY, percentX, percentZ,
+                                   xyz, xy1z, x1yz, x1y1z,
+                                   xyz1, xy1z1, x1yz1, x1y1z1);
+                int y = cellY * sg->chunkHeight + posY;
+                Block block = get_block_from_noise(noise, y, user);
+                if (predicate != NULL && predicate(block, user))
+                    return y + 1;
+            }
+        }
+        return 0;
+    }
+
+    // Slow path : early-exit (calcule seulement les y nécessaires)
+    double depth[4], scale[4], roff[4];
+    int cornerX[4] = {cellX, cellX, cellX+1, cellX+1};
+    int cornerZ[4] = {cellZ, cellZ+1, cellZ, cellZ+1};
+    for (int i = 0; i < 4; i++) {
+        if (!cached[i]) {
+            get_column_params(sg, cornerX[i], cornerZ[i], &depth[i], &scale[i], &roff[i]);
+        }
+    }
+
+    int startY = sg->startSizeY;
+    // top[i] = noise at y=startSizeY : 0 for non-cached (buffer[startSizeY] never written),
+    // cached[startSizeY] for cached columns
+    double top[4];
+    for (int i = 0; i < 4; i++)
+        top[i] = cached[i] ? cached[i][startY] : 0.0;
+
+    for (int cellY = startY - 1; cellY >= 0; --cellY) {
+        double bot[4];
+        for (int i = 0; i < 4; i++) {
+            if (cached[i])
+                bot[i] = cached[i][cellY];
+            else
+                bot[i] = sample_noise_at_y(sg, cornerX[i], cellY, cornerZ[i], depth[i], scale[i], roff[i]);
+        }
+
+        for (int posY = sg->chunkHeight - 1; posY >= 0; --posY) {
+            double percentY = (double)posY / (double)sg->chunkHeight;
+            double noise = lerp3(percentY, percentX, percentZ,
+                               bot[0], top[0], bot[2], top[2],
+                               bot[1], top[1], bot[3], top[3]);
+            int y = cellY * sg->chunkHeight + posY;
+            Block block = get_block_from_noise(noise, y, user);
+            if (predicate != NULL && predicate(block, user))
+                return y + 1;
+        }
+
+        // Le bas de cette cellule devient le haut de la cellule en dessous
+        top[0] = bot[0]; top[1] = bot[1]; top[2] = bot[2]; top[3] = bot[3];
     }
     return 0;
 }

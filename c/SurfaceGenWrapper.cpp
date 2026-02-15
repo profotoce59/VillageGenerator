@@ -59,6 +59,13 @@ int SurfaceGenWrapper::generateColumnFromY(int x, int z, BlockPredicate predicat
     return generate_column_from_y(sg, x, z, predicate, sg);
 }
 
+int SurfaceGenWrapper::generateColumnFromYEarlyExit(int x, int z, BlockPredicate predicate) {
+    if (!predicate) {
+        predicate = defaultNotAirPredicate;
+    }
+    return generate_column_from_y_early_exit(sg, x, z, predicate, sg);
+}
+
 int SurfaceGenWrapper::getHeightOnGround(int x, int z) {
     // small FIFO cache to avoid recomputing height for same (x,z)
     for (size_t i = 0; i < HEIGHT_CACHE_CAP; i++) {

@@ -37,6 +37,13 @@ public:
     int generateColumnFromY(int x, int z, BlockPredicate predicate = nullptr);
 
     /**
+     * Version early-exit : calcule le bruit à la volée de haut en bas,
+     * s'arrête dès qu'on trouve le premier bloc matchant.
+     * Plus rapide que generateColumnFromY quand le bloc est haut (évite de calculer toute la colonne).
+     */
+    int generateColumnFromYEarlyExit(int x, int z, BlockPredicate predicate = nullptr);
+
+    /**
      * Raccourci pour trouver la première hauteur avec un bloc solide selon WORLD_SURFACE_WG
      * (ignore les feuilles, fleurs, herbe, etc. comme en Java)
      * @param x Coordonnée X du monde

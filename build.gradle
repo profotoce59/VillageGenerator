@@ -51,6 +51,10 @@ test {
     useJUnitPlatform()
 }
 
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
 // Tâche pour exécuter le test de comparaison
 task runCompareTest(type: JavaExec) {
     group = 'verification'
@@ -137,6 +141,33 @@ task testSurfaceGen2(type: JavaExec) {
     javaLauncher = javaToolchains.launcherFor {
         languageVersion = JavaLanguageVersion.of(21)
     }
+}
+
+// Benchmark SurfaceGenerator2 height vs reference heights
+task surfaceGenHeightBenchmark(type: JavaExec) {
+    group = 'verification'
+    description = 'Benchmark generateColumnfromY vs getFirstHeightInColumn on a shuffled 30x30 grid'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'profotoce59.test.SurfaceGenHeightBenchmark'
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// Dump biomes for noise gen comparison (Java)
+task dumpBiomeNoiseGen(type: JavaExec) {
+    group = 'verification'
+    description = 'Dump getBiomeForNoiseGen outputs for comparison (writes logs/biome_java_seed_*.txt)'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'profotoce59.test.BiomeCompareDump'
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+    jvmArgs '-Dfile.encoding=UTF-8'
+    def seedArg = project.hasProperty('seed') ? project.property('seed') : '755681386269665'
+    def coordsArg = project.hasProperty('coords') ? project.property('coords') : "logs/biome_positions_seed_${seedArg}.txt"
+    def outArg = project.hasProperty('out') ? project.property('out') : "logs/biome_java_seed_${seedArg}.txt"
+    args seedArg, coordsArg, outArg
 }
 
 java {

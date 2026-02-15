@@ -100,6 +100,10 @@ void free_surface_cache(SurfaceGen *sg);
 void reset_surface_cache_stats(SurfaceGen *sg);
 void get_surface_cache_stats(SurfaceGen *sg, size_t *hits, size_t *misses);
 
+// Version early-exit de generate_column_from_y (pas de cache, stop dès match)
+int generate_column_from_y_early_exit(SurfaceGen *sg, int x, int z,
+                                       BlockPredicate predicate, void *user);
+
 // profiling
 void reset_surface_profile_stats(SurfaceGen *sg);
 void get_surface_profile_stats(SurfaceGen *sg,

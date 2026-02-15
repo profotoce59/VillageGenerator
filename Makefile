@@ -4,7 +4,7 @@
 #   make -f Makefile.compare test-c       # Exécuter le test C
 #   make -f Makefile.compare compare      # Exécuter les deux et comparer
 
-.PHONY: all test-java test-c compare clean help
+.PHONY: all test-java test-c compare clean help setup
 
 # Couleurs pour l'affichage
 BLUE := \033[0;34m
@@ -21,8 +21,15 @@ help:
 	@echo "  $(GREEN)test-java$(NC)  - Exécuter le test Java"
 	@echo "  $(GREEN)test-c$(NC)     - Exécuter le test C"
 	@echo "  $(GREEN)compare$(NC)    - Exécuter les deux tests et comparer"
+	@echo "  $(GREEN)setup$(NC)      - Initialiser les submodules"
 	@echo "  $(GREEN)clean$(NC)      - Nettoyer les fichiers générés"
 	@echo ""
+
+setup:
+	@echo "$(BLUE)========================================$(NC)"
+	@echo "$(BLUE)   Initialisation des submodules        $(NC)"
+	@echo "$(BLUE)========================================$(NC)"
+	@git submodule update --init --recursive
 
 # Test Java
 test-java-height:
