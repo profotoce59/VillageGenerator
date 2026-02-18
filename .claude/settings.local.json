@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(make test_village_generation:*)",
+      "Bash(./test_village_generation:*)"
+    ]
+  }
+}

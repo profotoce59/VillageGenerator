@@ -1,7 +1,7 @@
 # ---- config ----
 CC              := gcc
 CXX             := g++
-CUBIOMES_DIR    := ../../cubiomes
+CUBIOMES_DIR    := ../cubiomes
 CFLAGS_COMMON   := -O2 -std=c11 -fwrapv -I$(CUBIOMES_DIR)
 CXXFLAGS_COMMON := -O2 -std=c++17 -fwrapv -I$(CUBIOMES_DIR)
 LIBS            := -lm
@@ -77,7 +77,7 @@ test_village_seed: test_village_seed.cpp SurfaceGenWrapper.cpp
 	$(CXX) $(CXXFLAGS_COMMON) test_village_seed.cpp SurfaceGenWrapper.cpp surface_gen.o cubiomes_integration.o $(LIBCUBIOMES) -o $@ $(LIBS)
 
 # Test de génération complète du village
-test_village_generation: test_village_generation.cpp SurfaceGenWrapper.cpp TerrainGenerator.cpp VillageGenerator.cpp BlockStructures.cpp ChunkRand.cpp VillagePools.cpp JigSawPool.cpp village_structure_size.cpp
+test_village_generation: test_village_generation.cpp SurfaceGenWrapper.cpp TerrainGenerator.cpp VillageGenerator.cpp BlockStructures.cpp ChunkRand.cpp VillagePools.cpp JigSawPool.cpp village_structure_size.cpp BiomeSource.cpp Biome.cpp
 	$(CC) $(CFLAGS_COMMON) -c surface_gen.c -o surface_gen.o
 	$(CC) $(CFLAGS_COMMON) -c cubiomes_integration.c -o cubiomes_integration.o
-	$(CXX) $(CXXFLAGS_COMMON) test_village_generation.cpp SurfaceGenWrapper.cpp TerrainGenerator.cpp VillageGenerator.cpp BlockStructures.cpp ChunkRand.cpp VillagePools.cpp JigSawPool.cpp village_structure_size.cpp surface_gen.o cubiomes_integration.o $(LIBCUBIOMES) -o $@ $(LIBS)
+	$(CXX) $(CXXFLAGS_COMMON) test_village_generation.cpp SurfaceGenWrapper.cpp TerrainGenerator.cpp VillageGenerator.cpp BlockStructures.cpp ChunkRand.cpp VillagePools.cpp JigSawPool.cpp village_structure_size.cpp BiomeSource.cpp Biome.cpp surface_gen.o cubiomes_integration.o $(LIBCUBIOMES) -o $@ $(LIBS) -lpthread
