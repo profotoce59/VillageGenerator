@@ -97,7 +97,7 @@ public class VillageGenerator extends Generator {
         BlockBox box = BlockBox.getBoundingBox(bPos, rotation, BPos.ORIGIN, BlockMirror.NONE, size);
         int centerX = (box.minX + box.maxX) / 2;
         int centerZ = (box.minZ + box.maxZ) / 2;
-        int heightY = generator.getFirstHeightInColumn(centerX,centerZ,TerrainGenerator.WORLD_SURFACE_WG);
+        int heightY = superflat ? 4 : generator.getFirstHeightInColumn(centerX,centerZ,TerrainGenerator.WORLD_SURFACE_WG);
         int y = bPos.getY() + heightY;
         int centerY = box.minY + 1;
 
@@ -113,7 +113,7 @@ public class VillageGenerator extends Generator {
         piece.voxelShape = a;
         assembler.placing.addLast(piece);
         while(!assembler.placing.isEmpty()) {
-            assembler.tryPlacing(villageType, assembler.placing.removeFirst(), rand, true);
+            assembler.tryPlacing(villageType, assembler.placing.removeFirst(), rand, true, superflat);
         }
         generated = true;
         return true;
@@ -467,7 +467,7 @@ public class VillageGenerator extends Generator {
             /* ------- //13 -> 13*8 = 104 si le village est plus que 104, il y aura une mauvaise gen, mais permet d'optimiser de beaucoup.*/
         }
 
-        public void tryPlacing(VillageType villageType, Piece piece, ChunkRand rand, boolean expansionHack) {
+        public void tryPlacing(VillageType villageType, Piece piece, ChunkRand rand, boolean expansionHack, boolean superflat) {
             int depth = piece.depth;
             BPos pos = piece.pos;
             PlacementBehaviour placementBehaviour = piece.placementBehaviour;
@@ -569,7 +569,7 @@ public class VillageGenerator extends Generator {
                                         int k1 = blockPos3.getY();
                                         int l1 = y - k1 + blockJigsawInfo.getFront().getVector().getY();
                                         int i2;
-                                        if (isRigid && flag2) {
+                                        if (superflat || isRigid && flag2) {
                                             i2 = minY + l1;
                                         } else {
                                             if (state == -1) {
@@ -597,7 +597,9 @@ public class VillageGenerator extends Generator {
                                                     box3.maxX+1,box3.maxY+1,box3.maxZ+1));
                                             Piece piece2 = new Piece(jigsawpiece1,blockpos5,box3,rotation1,piece1.placementBehaviour,depth+1);
                                             if(depth+1<= this.maxDepth){
-                                                this.pieces.add(piece2);
+                                                if (!piece2.getName().equals("pile_hay")) { // Hay bales do not generate on default superflat worlds (MC-309531)
+                                                    this.pieces.add(piece2);
+                                                }
                                                 piece2.setVoxelShape(mutableobject1);
                                                 this.placing.addLast(piece2);
                                             }
