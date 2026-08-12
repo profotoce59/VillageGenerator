@@ -108,6 +108,10 @@ run_test_village_generation_logs: test_village_generation
 	done; \
 	wait
 
+# Cohérence de genBiomes vis-à-vis du cache de layer (voir l'en-tête du .c)
+test_layer_cache_consistency: test_layer_cache_consistency.c $(LIBCUBIOMES)
+	$(CC) $(CFLAGS_COMMON) $^ -o $@ $(LIBS)
+
 # Dump biome ids at noise-gen coords for Java/C++ comparison
 biome_compare: biome_compare.cpp $(LIBCUBIOMES)
 	$(CXX) $(CXXFLAGS_COMMON) biome_compare.cpp $(LIBCUBIOMES) -o $@ $(LIBS)

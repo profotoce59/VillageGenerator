@@ -21,3 +21,29 @@
 
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
+
+# C / CUDA build artifacts
+*.o
+*.obj
+*.lib
+*.exp
+*.pdb
+*.a
+c/cuda/test_cuda
+c/cuda/test_cuda.exe
+c/example_cubiomes_surface
+c/example_cubiomes_surface.exe
+c/test_village_generation
+c/test_village_generation.exe
+c/log_thread_*.txt
+output_c.txt
+output_java.txt
+c/cuda/trace_*.txt
+c/test_layer_cache_consistency
+c/test_layer_cache_consistency.exe
+c/cuda/test_village_cuda.exe
+c/cuda/bench_village
+c/cuda/bench_village.exe
+c/cuda/search_village_cuda
+c/cuda/search_village_cuda.exe
+c/cuda/*.log

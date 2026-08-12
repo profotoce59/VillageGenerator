@@ -212,6 +212,13 @@ static bool isNotEmpty(const VoxelShape* vs, const BlockBox& box) {
 
 class VillageGenerator::Assembler {
 public:
+    // Marge au-delà des bounds du village pour la zone pré-calculée. Les bounds
+    // vont à ±80/81 du centre ; sur 105 villages mesurés, les positions
+    // effectivement interrogées atteignent 85 au plus (médiane 74, p90 84),
+    // donc 8 de marge couvre tout le monde. Une requête qui sortirait quand
+    // même retombe simplement sur le chemin C.
+    static constexpr int PREFETCH_MARGIN = 8;
+
     Assembler(int maxDepth, TerrainGenerator* generator, std::vector<std::unique_ptr<Piece>>& pieces,
              bool useHeightMapOptimizer, int heightY, VoxelShape* globalShape)
         : maxDepth(maxDepth), generator(generator), pieces(pieces),
@@ -221,6 +228,19 @@ public:
             heightMapGen = std::make_unique<SurfaceGenWrapper>(generator->getWorldSeed(), 19);
             heightMapGen->setStartSizeYExact(heightY + 25);
             heightMapGen->resetHeightCache();
+
+            // Toutes les pièces tiennent dans les bounds du VoxelShape, donc les
+            // requêtes de hauteur aussi (à la marge près des positions testées
+            // puis rejetées). Si un HeightProvider est installé, on lui fait
+            // calculer la zone entière d'un coup ; sinon c'est un no-op.
+            if (globalShape && globalShape->hasBounds) {
+                const int margin = PREFETCH_MARGIN;
+                int x0 = globalShape->bounds.minX - margin;
+                int z0 = globalShape->bounds.minZ - margin;
+                int w  = (globalShape->bounds.maxX + margin) - x0 + 1;
+                int hh = (globalShape->bounds.maxZ + margin) - z0 + 1;
+                heightMapGen->prefetchRegion(x0, z0, w, hh);
+            }
         }
     }
 

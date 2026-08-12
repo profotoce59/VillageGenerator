@@ -3,6 +3,38 @@
 #include <new>
 #include <iostream>
 #include <cstdint>
+#include <chrono>
+
+static SurfaceGenWrapper::Stats g_stats =
+    {0, 0, 0, 0, INT32_MAX, INT32_MIN, INT32_MAX, INT32_MIN, 0, 0};
+
+SurfaceGenWrapper::Stats SurfaceGenWrapper::getStats() { return g_stats; }
+void SurfaceGenWrapper::resetStats() {
+    g_stats = Stats{0, 0, 0, 0, INT32_MAX, INT32_MIN, INT32_MAX, INT32_MIN, 0, 0};
+}
+
+static HeightProvider* g_heightProvider = nullptr;
+static bool g_verifyProvider = false;
+
+void SurfaceGenWrapper::setVerifyProvider(bool enabled) { g_verifyProvider = enabled; }
+
+static FILE* g_trace = nullptr;
+
+void SurfaceGenWrapper::setQueryTrace(const char* path) {
+    if (g_trace) { fclose(g_trace); g_trace = nullptr; }
+    if (path) g_trace = fopen(path, "w");
+}
+
+void SurfaceGenWrapper::setHeightProvider(HeightProvider* provider) {
+    g_heightProvider = provider;
+}
+HeightProvider* SurfaceGenWrapper::getHeightProvider() { return g_heightProvider; }
+
+void SurfaceGenWrapper::prefetchRegion(int x0, int z0, int w, int h) {
+    prefetchGeneration = 0;
+    if (!g_heightProvider || !sg || w <= 0 || h <= 0) return;
+    prefetchGeneration = g_heightProvider->prefetch(sg, x0, z0, w, h);
+}
 
 // Prédicat par défaut : retourne 1 (true) pour tout bloc non-air
 int SurfaceGenWrapper::defaultNotAirPredicate(Block block, void* user) {
@@ -51,12 +83,49 @@ SurfaceGenWrapper::~SurfaceGenWrapper() {
 
 int SurfaceGenWrapper::generateColumnFromY(int x, int z, BlockPredicate predicate) {
     // Si aucun prédicat n'est fourni, utiliser le prédicat par défaut (non-air)
+    const bool notAir = (!predicate || predicate == defaultNotAirPredicate);
     if (!predicate) {
         predicate = defaultNotAirPredicate;
     }
+    g_stats.columnQueries++;
+    if (x < g_stats.minX) g_stats.minX = x;
+    if (x > g_stats.maxX) g_stats.maxX = x;
+    if (z < g_stats.minZ) g_stats.minZ = z;
+    if (z > g_stats.maxZ) g_stats.maxZ = z;
 
-    // Appeler la fonction C
-    return generate_column_from_y(sg, x, z, predicate, sg);
+    auto t0 = std::chrono::steady_clock::now();
+
+    // La zone pré-calculée ne couvre que le prédicat non-air, et seulement si
+    // c'est bien CETTE instance qui l'a demandée.
+    int h = -1;
+    if (notAir && prefetchGeneration != 0 && g_heightProvider &&
+        g_heightProvider->currentGeneration() == prefetchGeneration) {
+        h = g_heightProvider->lookup(x, z);
+    }
+
+    if (h >= 0) {
+        g_stats.providerHits++;
+        if (g_verifyProvider) {
+            int ref = generate_column_from_y(sg, x, z, predicate, sg);
+            if (ref != h) {
+                std::cerr << "[verify] ECART a (" << x << ", " << z << ") : provider="
+                          << h << " C=" << ref
+                          << "  startSizeY=" << sg->startSizeY
+                          << " noiseSizeY=" << sg->noiseSizeY << std::endl;
+            }
+        }
+    } else {
+        if (notAir && prefetchGeneration != 0) g_stats.providerMisses++;
+        h = generate_column_from_y(sg, x, z, predicate, sg);
+    }
+
+    g_stats.columnNanos += (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::steady_clock::now() - t0).count();
+
+    if (g_trace)
+        fprintf(g_trace, "%d %d %d %d %d\n", x, z, h, sg->startSizeY, notAir ? 1 : 0);
+
+    return h;
 }
 
 int SurfaceGenWrapper::generateColumnFromYEarlyExit(int x, int z, BlockPredicate predicate) {
@@ -71,10 +140,12 @@ int SurfaceGenWrapper::getHeightOnGround(int x, int z) {
     for (size_t i = 0; i < HEIGHT_CACHE_CAP; i++) {
         if (heightCache[i].valid && heightCache[i].x == x && heightCache[i].z == z) {
             heightCacheHits++;
+            g_stats.groundCacheHits++;
             return heightCache[i].height;
         }
     }
     heightCacheMisses++;
+    g_stats.groundQueries++;
 
     // Utiliser le prédicat WORLD_SURFACE_WG (comme en Java pour les villages)
     int height = generateColumnFromY(x, z, worldSurfaceWGPredicate);

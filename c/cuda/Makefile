@@ -1,61 +1,140 @@
 # ---- CUDA build for village noise GPU acceleration ----
 #
 # Usage:
-#   make -C cuda                     # build libvillage_noise_cuda.a
-#   make -C cuda test_cuda           # build + run test
+#   make -C cuda                # build village_noise_cuda.lib
+#   make -C cuda test_cuda      # build the correctness + benchmark test
+#   make -C cuda run            # build and run it
 #   make -C cuda clean
 #
-# Prerequisites: CUDA toolkit (nvcc) + cubiomes built
+# Requirements
+#   - a CUDA toolkit new enough for the installed GPU. The default below is
+#     CUDA 13.1; an RTX 50xx (sm_120) is NOT supported by CUDA 11.x, so do not
+#     fall back to whichever nvcc happens to be first in PATH.
+#   - MSVC build tools (nvcc needs cl.exe as host compiler on Windows).
+#
+# Override any of these on the command line, e.g.
+#   make -C cuda test_cuda CUDA_HOME="/c/.../CUDA/v12.6" GPU_ARCH=sm_89
 
-NVCC          := nvcc
-CXX           := g++
+CUDA_HOME     ?= C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v13.1
+MSVC_BIN      ?= C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64
+GPU_ARCH      ?= native
+
+NVCC          := "$(CUDA_HOME)/bin/nvcc"
 CUBIOMES_DIR  := ../../cubiomes
 PARENT_DIR    := ..
 
-MSVC2022_BIN  := "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64"
-NVCC_FLAGS    := -O2 -std=c++17 --expt-relaxed-constexpr \
-                 -ccbin $(MSVC2022_BIN) \
+# -fmad=false is REQUIRED for bit-exactness: without it nvcc contracts
+# `from + part * (to - from)` into an FMA and the interpolated noise drifts
+# from the CPU result, which flips heights at cell boundaries.
+NVCC_FLAGS    := -O3 -std=c++17 -fmad=false \
+                 -arch=$(GPU_ARCH) \
+                 -ccbin "$(MSVC_BIN)" \
                  -I$(CUBIOMES_DIR) -I$(PARENT_DIR)
-CXX_FLAGS     := -O2 -std=c++17 -I$(CUBIOMES_DIR) -I$(PARENT_DIR)
 
-LIBCUBIOMES   := cubiomes.lib
-CUBIOMES_SRC  := $(wildcard $(CUBIOMES_DIR)/*.c)
+# cubiomes and the shared C sources must be compiled by the same (MSVC) host
+# compiler as the CUDA objects, so they are built here rather than reused from
+# the mingw build in ../Makefile.
+CUBIOMES_SRC  := $(CUBIOMES_DIR)/noise.c $(CUBIOMES_DIR)/biomes.c \
+                 $(CUBIOMES_DIR)/layers.c $(CUBIOMES_DIR)/biomenoise.c \
+                 $(CUBIOMES_DIR)/generator.c $(CUBIOMES_DIR)/finders.c \
+                 $(CUBIOMES_DIR)/util.c $(CUBIOMES_DIR)/quadbase.c
+CUBIOMES_OBJ  := $(notdir $(CUBIOMES_SRC:.c=.obj))
 
-# Targets (use .lib for MSVC linker)
+HOST_SRC      := $(PARENT_DIR)/surface_gen.c $(PARENT_DIR)/cubiomes_integration.c
+HOST_OBJ      := surface_gen.obj cubiomes_integration.obj
+
 LIB           := village_noise_cuda.lib
+LIBCUBIOMES   := cubiomes_msvc.lib
 
-.PHONY: all clean
+.PHONY: all clean run
 
 all: $(LIB)
 
-# Compile CUDA kernels + host API
-village_noise: village_noise.cu village_noise.cuh
-	$(NVCC) $(NVCC_FLAGS) -c village_noise.cu -o village_noise.o
+# ---- CUDA objects --------------------------------------------------------
 
-# Compile host wrapper (plain C++)
-village_noise_host: village_noise_host.cpp village_noise.cuh
-	$(NVCC) $(NVCC_FLAGS) -c village_noise_host.cpp -o village_noise_host.o
+village_noise.obj: village_noise.cu village_noise.cuh
+	$(NVCC) $(NVCC_FLAGS) -c $< -o $@
 
-# Static library
-$(LIB): village_noise.o village_noise_host.o
-	$(NVCC) -lib -ccbin $(MSVC2022_BIN) village_noise.o village_noise_host.o -o $(LIB)
+village_noise_host.obj: village_noise_host.cpp village_noise_host.hpp village_noise.cuh
+	$(NVCC) $(NVCC_FLAGS) -c $< -o $@
 
-# Build cubiomes as MSVC-compatible .lib (recompile from source via nvcc)
-CUBIOMES_OBJS := noise.obj biomes.obj layers.obj biomenoise.obj generator.obj finders.obj util.obj quadbase.obj
+$(LIB): village_noise.obj village_noise_host.obj
+	$(NVCC) -lib -ccbin "$(MSVC_BIN)" $^ -o $@
 
-$(LIBCUBIOMES): $(CUBIOMES_SRC)
-	$(NVCC) -ccbin $(MSVC2022_BIN) -O2 -Xcompiler "/w /D_WIN32" -I$(CUBIOMES_DIR) \
-		-c $(CUBIOMES_DIR)/noise.c $(CUBIOMES_DIR)/biomes.c $(CUBIOMES_DIR)/layers.c \
-		$(CUBIOMES_DIR)/biomenoise.c $(CUBIOMES_DIR)/generator.c $(CUBIOMES_DIR)/finders.c \
-		$(CUBIOMES_DIR)/util.c $(CUBIOMES_DIR)/quadbase.c
-	$(NVCC) -lib -ccbin $(MSVC2022_BIN) -o $(LIBCUBIOMES) $(CUBIOMES_OBJS)
+# ---- cubiomes + shared C sources, MSVC-compatible ------------------------
 
-# Test executable (optional)
-test_cuda: test_cuda.cpp $(LIB) $(LIBCUBIOMES)
-	$(NVCC) $(NVCC_FLAGS) test_cuda.cpp \
-		$(PARENT_DIR)/surface_gen.c $(PARENT_DIR)/cubiomes_integration.c \
-		$(LIB) $(LIBCUBIOMES) \
-		-o test_cuda
+# /w silences the flood of MSVC warnings from cubiomes' C99 style.
+%.obj: $(CUBIOMES_DIR)/%.c
+	$(NVCC) -ccbin "$(MSVC_BIN)" -O2 -Xcompiler -w -I$(CUBIOMES_DIR) -c $< -o $@
+
+$(LIBCUBIOMES): $(CUBIOMES_OBJ)
+	$(NVCC) -lib -ccbin "$(MSVC_BIN)" $^ -o $@
+
+surface_gen.obj: $(PARENT_DIR)/surface_gen.c $(PARENT_DIR)/surface_gen.h
+	$(NVCC) -ccbin "$(MSVC_BIN)" -O2 -Xcompiler -w -I$(CUBIOMES_DIR) -I$(PARENT_DIR) -c $< -o $@
+
+cubiomes_integration.obj: $(PARENT_DIR)/cubiomes_integration.c $(PARENT_DIR)/cubiomes_integration.h
+	$(NVCC) -ccbin "$(MSVC_BIN)" -O2 -Xcompiler -w -I$(CUBIOMES_DIR) -I$(PARENT_DIR) -c $< -o $@
+
+# ---- test ----------------------------------------------------------------
+
+test_cuda: test_cuda.cpp $(LIB) $(LIBCUBIOMES) $(HOST_OBJ)
+	$(NVCC) $(NVCC_FLAGS) test_cuda.cpp $(HOST_OBJ) $(LIB) $(LIBCUBIOMES) -o $@
+
+run: test_cuda
+	./test_cuda.exe
+
+# ---- village : C seul vs C + hauteurs CUDA -------------------------------
+
+# Sources C++ du générateur de villages, recompilées ici avec MSVC.
+VILLAGE_SRC := $(PARENT_DIR)/VillageGenerator.cpp $(PARENT_DIR)/TerrainGenerator.cpp \
+               $(PARENT_DIR)/SurfaceGenWrapper.cpp $(PARENT_DIR)/BlockStructures.cpp \
+               $(PARENT_DIR)/ChunkRand.cpp $(PARENT_DIR)/VillagePools.cpp \
+               $(PARENT_DIR)/JigSawPool.cpp $(PARENT_DIR)/village_structure_size.cpp \
+               $(PARENT_DIR)/BiomeSource.cpp $(PARENT_DIR)/Biome.cpp
+
+test_village_cuda: test_village_cuda.cpp cuda_height_provider.cpp cuda_height_provider.hpp \
+                   $(VILLAGE_SRC) $(LIB) $(LIBCUBIOMES) $(HOST_OBJ)
+	$(NVCC) $(NVCC_FLAGS) -Xcompiler -wd4267 -Xcompiler -wd4244 \
+		test_village_cuda.cpp cuda_height_provider.cpp $(VILLAGE_SRC) \
+		$(HOST_OBJ) $(LIB) $(LIBCUBIOMES) -o $@
+
+run-village: test_village_cuda
+	./test_village_cuda.exe
+
+# Benchmark de débit. Un seul binaire, backend choisi à l'exécution.
+bench_village: bench_village.cpp cuda_height_provider.cpp cuda_height_provider.hpp \
+               $(VILLAGE_SRC) $(LIB) $(LIBCUBIOMES) $(HOST_OBJ)
+	$(NVCC) $(NVCC_FLAGS) -Xcompiler -wd4267 -Xcompiler -wd4244 \
+		bench_village.cpp cuda_height_provider.cpp $(VILLAGE_SRC) \
+		$(HOST_OBJ) $(LIB) $(LIBCUBIOMES) -o $@
+
+# Recherche de villages à forte densité de forgerons.
+search_village_cuda: search_village_cuda.cpp cuda_height_provider.cpp cuda_height_provider.hpp \
+                     $(VILLAGE_SRC) $(LIB) $(LIBCUBIOMES) $(HOST_OBJ)
+	$(NVCC) $(NVCC_FLAGS) -Xcompiler -wd4267 -Xcompiler -wd4244 \
+		search_village_cuda.cpp cuda_height_provider.cpp $(VILLAGE_SRC) \
+		$(HOST_OBJ) $(LIB) $(LIBCUBIOMES) -o $@
+
+search: export CUBIOMES_LAYER_CACHE = 0
+search: search_village_cuda
+	./search_village_cuda.exe --smiths $(SMITHS) --out $(SEARCH_OUT)
+
+SMITHS     ?= 6
+SEARCH_OUT ?= village_finds.log
+
+BENCH_SEED  ?= 1
+BENCH_COUNT ?= 10000
+
+# export cible-spécifique plutôt qu'un préfixe VAR=val : ça marche quel que
+# soit le shell que make utilise (sh sous MSYS, cmd sous PowerShell).
+bench-c bench-cuda run-village: export CUBIOMES_LAYER_CACHE = 0
+
+bench-c: bench_village
+	./bench_village.exe --c    --seed $(BENCH_SEED) --count $(BENCH_COUNT)
+
+bench-cuda: bench_village
+	./bench_village.exe --cuda --seed $(BENCH_SEED) --count $(BENCH_COUNT)
 
 clean:
-	rm -f *.o $(LIB) test_cuda
+	rm -f *.obj *.o *.lib *.exp *.exe *.pdb test_cuda test_village_cuda bench_village search_village_cuda

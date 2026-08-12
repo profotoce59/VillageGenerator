@@ -218,44 +218,24 @@ void setup_surface_gen_with_cubiomes(SurfaceGen *sg, CubiomesContext *ctx) {
     sg->user                = ctx;
 }
 
-// Hook : récupère depth et scale depuis un biome cubiomes
-// Implémente la moyenne pondérée des biomes environnants comme Minecraft 1.16+
-// IMPORTANT: x et z sont des coordonnées noise cell (block / 4)
-// Java: getBiomeForNoiseGen(x, seaLevel, z) où x,z sont noise cell coords et seaLevel=63
-void cubiomes_get_depth_and_scale(int x, int z, double out2[2], void *user) {
-    CubiomesContext *ctx = (CubiomesContext*)user;
-
+// Moyenne pondérée depth/scale sur un voisinage 5x5 de biomes.
+// getNeighbour(rx, rz, ctxData) renvoie l'id du biome au décalage (rx, rz).
+// Le sens d'itération (rx externe, rz interne) et le type float des poids sont
+// significatifs : ils fixent l'ordre des sommations flottantes, donc le résultat
+// au bit près. Ne pas réorganiser.
+static inline void weighted_depth_scale(const int *biome5x5, int centerBiomeId,
+                                        double out2[2]) {
     double weightedScale = 0.0;
     double weightedDepth = 0.0;
     double totalWeight = 0.0;
-
-    // x, z sont en noise cell coords (block / 4)
-    // seaLevel = 63 en block coords (comme Java)
-    // Testé: scale=4 avec coords=(cellX, seaLevel, cellZ) donne le bon biome
-    const int seaLevel = 63;
-
-    // Obtenir le biome central
-    int centerBiomeId = getBiomeAtCached(ctx, x, seaLevel, z);
-    double centerDepth, centerScale;
     int grass;
+
+    double centerDepth, centerScale;
     getBiomeDepthAndScale(centerBiomeId, &centerDepth, &centerScale, &grass);
-
-    int biomeGrid[25];
-    unsigned char filled[25] = {0};
-    biomeGrid[12] = centerBiomeId;
-    filled[12] = 1;
-
-    // Fixed behavior: prefill the 5x5 grid to match Java's sampling pattern.
-    if (prefill_biome_5x5(ctx, x, z, seaLevel, biomeGrid, filled) != 0) {
-        // If prefill fails, fall back to on-demand filling.
-        filled[12] = 1;
-        biomeGrid[12] = centerBiomeId;
-    }
 
     for (int rx = -2; rx <= 2; ++rx) {
         for (int rz = -2; rz <= 2; ++rz) {
-            fill_biome_cell(ctx, x, z, seaLevel, rx, rz, biomeGrid, filled);
-            int biomeId = biomeGrid[(rx + 2) + (rz + 2) * 5];
+            int biomeId = biome5x5[(rx + 2) + (rz + 2) * 5];
             double depth, scale;
             getBiomeDepthAndScale(biomeId, &depth, &scale, &grass);
 
@@ -270,7 +250,6 @@ void cubiomes_get_depth_and_scale(int x, int z, double out2[2], void *user) {
         }
     }
 
-    // Calculer les moyennes
     weightedDepth /= totalWeight;
     weightedScale /= totalWeight;
 
@@ -278,10 +257,86 @@ void cubiomes_get_depth_and_scale(int x, int z, double out2[2], void *user) {
     weightedScale = weightedScale * 0.9 + 0.1;
     weightedDepth = (weightedDepth * 4.0 - 1.0) / 8.0;
 
-    // Pour MC 1.16+ : appliquer les transformations spécifiques
     out2[0] = weightedDepth * 17.0 / 64.0;  // depth
-    out2[1] = 96.0 / weightedScale;          // scale
+    out2[1] = 96.0 / weightedScale;         // scale
+}
 
+// Hook : récupère depth et scale depuis un biome cubiomes
+// Implémente la moyenne pondérée des biomes environnants comme Minecraft 1.16+
+// IMPORTANT: x et z sont des coordonnées noise cell (block / 4)
+// Java: getBiomeForNoiseGen(x, seaLevel, z) où x,z sont noise cell coords et seaLevel=63
+void cubiomes_get_depth_and_scale(int x, int z, double out2[2], void *user) {
+    CubiomesContext *ctx = (CubiomesContext*)user;
+
+    // x, z sont en noise cell coords (block / 4)
+    // seaLevel = 63 en block coords (comme Java)
+    // Testé: scale=4 avec coords=(cellX, seaLevel, cellZ) donne le bon biome
+    const int seaLevel = 63;
+
+    // Obtenir le biome central
+    int centerBiomeId = getBiomeAtCached(ctx, x, seaLevel, z);
+
+    int biomeGrid[25];
+    unsigned char filled[25] = {0};
+    biomeGrid[12] = centerBiomeId;
+    filled[12] = 1;
+
+    // Fixed behavior: prefill the 5x5 grid to match Java's sampling pattern.
+    if (prefill_biome_5x5(ctx, x, z, seaLevel, biomeGrid, filled) != 0) {
+        // If prefill fails, fall back to on-demand filling.
+        filled[12] = 1;
+        biomeGrid[12] = centerBiomeId;
+    }
+    for (int rx = -2; rx <= 2; ++rx) {
+        for (int rz = -2; rz <= 2; ++rz) {
+            fill_biome_cell(ctx, x, z, seaLevel, rx, rz, biomeGrid, filled);
+        }
+    }
+
+    weighted_depth_scale(biomeGrid, centerBiomeId, out2);
+}
+
+int cubiomes_get_depth_and_scale_grid(CubiomesContext *ctx,
+                                      int cellX0, int cellZ0,
+                                      int gridW, int gridH,
+                                      double *depthOut, double *scaleOut) {
+    if (!ctx || gridW <= 0 || gridH <= 0 || !depthOut || !scaleOut) return -1;
+
+    const int seaLevel = 63;
+    // Marge de 2 cellules de chaque côté pour les voisinages 5x5 des bords.
+    const int bw = gridW + 4;
+    const int bh = gridH + 4;
+
+    Range r = {4, cellX0 - 2, cellZ0 - 2, bw, bh, seaLevel, 1};
+    size_t need = getMinCacheSize(&ctx->gen, r.scale, r.sx, r.sy, r.sz);
+    if (need == 0) return -1;
+
+    int *biomes = (int*)malloc(sizeof(int) * need);
+    if (!biomes) return -1;
+
+    if (genBiomes(&ctx->gen, biomes, r) != 0) {
+        free(biomes);
+        return -1;
+    }
+
+    for (int cz = 0; cz < gridH; ++cz) {
+        for (int cx = 0; cx < gridW; ++cx) {
+            int biome5x5[25];
+            for (int rz = -2; rz <= 2; ++rz) {
+                for (int rx = -2; rx <= 2; ++rx) {
+                    biome5x5[(rx + 2) + (rz + 2) * 5] =
+                        biomes[(size_t)(cz + 2 + rz) * bw + (cx + 2 + rx)];
+                }
+            }
+            double out2[2];
+            weighted_depth_scale(biome5x5, biome5x5[12], out2);
+            depthOut[(size_t)cz * gridW + cx] = out2[0];
+            scaleOut[(size_t)cz * gridW + cx] = out2[1];
+        }
+    }
+
+    free(biomes);
+    return 0;
 }
 
 // Hook : échantillonne le bruit 3D de cubiomes

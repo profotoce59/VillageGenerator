@@ -1,59 +1,58 @@
 #pragma once
 
-#include <cstdint>
-#include <cstddef>
+#include <stdint.h>
+#include <stddef.h>
 
 // ============================================================================
 // GPU-side structures (flat, no pointers — copied to device memory)
+//
+// Layout note: the permutation tables of every octave are grouped in one
+// contiguous array so a block can stage them in shared memory with a single
+// coalesced copy.  samplePerlin does 8 random byte lookups per octave, so the
+// tables are the only part of the noise state that really needs fast random
+// access.
 // ============================================================================
 
-// Mirrors cubiomes PerlinNoise but fully self-contained
-struct GpuPerlinNoise {
-    uint8_t d[257];     // permutation table (256 + wrap)
-    uint8_t h2;
+#define GPU_OCT_MIN    16
+#define GPU_OCT_MAX    16
+#define GPU_OCT_MAIN    8
+#define GPU_OCT_DEPTH  16
+#define GPU_OCT_SURF   (GPU_OCT_MIN + GPU_OCT_MAX + GPU_OCT_MAIN)   // 40
+#define GPU_OCT_TOTAL  (GPU_OCT_SURF + GPU_OCT_DEPTH)               // 56
+
+// Scalar part of a cubiomes PerlinNoise.
+struct GpuPerlinParams {
     double a, b, c;
-    double amplitude;
-    double lacunarity;
-    double d2, t2;
+    double d2, t2;          // cached y=0 fast path
+    double amplitude;       // octdepth only
+    double lacunarity;      // octdepth only
+    int    h2;              // cached y=0 fast path
+    int    _pad;
 };
 
-// All octaves for SurfaceNoise flattened: 16 min + 16 max + 8 main = 40
-// (octsurf and octdepth are NOT used by sampleSurfaceNoise)
 struct GpuSurfaceNoise {
     double xzScale, yScale;
     double xzFactor, yFactor;
-    int octminCnt;   // should be 16
-    int octmaxCnt;   // should be 16
-    int octmainCnt;  // should be 8
-    GpuPerlinNoise octmin[16];
-    GpuPerlinNoise octmax[16];
-    GpuPerlinNoise octmain[8];
+    // [0..15]=octmin, [16..31]=octmax, [32..39]=octmain, [40..55]=octdepth
+    GpuPerlinParams oct[GPU_OCT_TOTAL];
+    uint8_t         perm[GPU_OCT_TOTAL][257];
 };
 
-// Parameters for one noise column (pre-computed on CPU from biome data)
+// Parameters for one noise column (pre-computed on CPU from biome data).
+// randomOffset is NOT here: it is pure noise and is computed on the device.
 struct ColumnParams {
-    int cellX, cellZ;       // cell coordinates in noise grid
-    double depth, scale;    // from get_depth_and_scale
-    double randomOffset;    // from sample_noise_2d (overworld only)
+    int    cellX, cellZ;    // cell coordinates in the noise grid
+    double depth, scale;    // from cubiomes_get_depth_and_scale
 };
 
-// Height query: one (x, z) world-coordinate point to compute height for
-struct HeightQuery {
-    int worldX, worldZ;
-};
-
-// Result: height at that point
-struct HeightResult {
-    int height;             // Y of first solid block (0 if none found)
-};
-
-// SurfaceGen config needed on GPU for column→height conversion
+// SurfaceGen config needed on GPU for the column -> height conversion
 struct GpuSurfaceGenConfig {
     int chunkWidth;         // 4
     int chunkHeight;        // 8
-    int startSizeY;         // typically ~10
-    int noiseSizeY;         // typically == startSizeY (or larger)
+    int startSizeY;         // number of vertical noise cells actually sampled
+    int noiseSizeY;         // worldHeight / chunkHeight — only used by the falloff math
     int seaLevel;           // 63
+    int dim;                // cubiomes Dimension: randomOffset applies to DIM_OVERWORLD only
     double densityFactor;
     double densityOffset;
     // slide settings
@@ -61,45 +60,95 @@ struct GpuSurfaceGenConfig {
     double botSlideTarget, botSlideSize, botSlideOffset;
 };
 
+// Which block predicate the height scan stops on.
+// Mirrors SurfaceGenWrapper: NOT_AIR == defaultNotAirPredicate,
+// STONE == worldSurfaceWGPredicate (the one villages use).
+enum HeightPredicate {
+    HEIGHT_PRED_NOT_AIR = 0,
+    HEIGHT_PRED_STONE   = 1
+};
+
 // ============================================================================
-// Host-side API
+// Low-level device API (implemented in village_noise.cu)
 // ============================================================================
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// Opaque handle for GPU resources
 typedef struct CudaNoiseContext CudaNoiseContext;
 
-// Initialize: uploads SurfaceNoise data to GPU, allocates buffers
-// Returns nullptr on failure
+// Uploads the surface-noise state to the GPU and allocates the batch buffers.
+// Returns NULL on failure.
 CudaNoiseContext* cuda_noise_init(
-    const GpuSurfaceNoise* hostSN,
+    const GpuSurfaceNoise*     hostSN,
     const GpuSurfaceGenConfig* hostCfg,
-    int maxColumns,         // max number of unique columns per batch
-    int maxQueries          // max number of height queries per batch
-);
+    int maxColumns,         // max number of unique noise columns per batch
+    int maxQueries);        // max number of height queries per batch
 
-// Free GPU resources
 void cuda_noise_destroy(CudaNoiseContext* ctx);
 
-// Batch compute heights:
-//   1. Upload column params (unique cell corners) + height queries
-//   2. GPU computes all noise columns in parallel
-//   3. GPU computes height for each query by interpolating 4 corner columns
-//   4. Download results
-//
-// Returns 0 on success, -1 on error
+// Ré-upload l'état de bruit et la config sans toucher aux buffers de travail.
+// Sert à passer d'une seed/config à une autre sans payer un cycle
+// cudaFree/cudaMalloc complet (coûteux : ~5 ms).
+// Renvoie -1 si la nouvelle config ne tient pas dans l'allocation existante ;
+// l'appelant doit alors recréer le contexte.
+int cuda_noise_update_state(CudaNoiseContext* ctx,
+                            const GpuSurfaceNoise*     hostSN,
+                            const GpuSurfaceGenConfig* hostCfg);
+
+// Scattered queries: the caller deduplicates columns itself and supplies, for
+// every query, the 4 corner column indices in the order
+//   (cellX,cellZ), (cellX,cellZ+1), (cellX+1,cellZ), (cellX+1,cellZ+1).
+// Returns 0 on success, -1 on error.
 int cuda_noise_batch_heights(
     CudaNoiseContext* ctx,
     const ColumnParams* columns, int numColumns,
-    const HeightQuery* queries, int numQueries,
-    // For each query, indices into columns[] for the 4 corners:
-    const int* queryCornerIndices,   // [numQueries * 4] — indices of (cellX,cellZ), (cellX,cellZ+1), (cellX+1,cellZ), (cellX+1,cellZ+1)
-    HeightResult* results            // [numQueries] — output
-);
+    const int* queryX, const int* queryZ, int numQueries,
+    const int* queryCornerIndices,      // [numQueries * 4]
+    int predicate,                      // HeightPredicate
+    int* heightsOut);                   // [numQueries]
+
+// Rectangular heightmap: columns[] must be the (gridW x gridH) grid of cells
+// starting at (cellX0, cellZ0), stored row-major as columns[cz * gridW + cx].
+// Corner indices are derived on the GPU, so nothing but the columns is uploaded.
+// heightsOut is [w * h], row-major (z-major), i.e. heightsOut[iz * w + ix].
+// Returns 0 on success, -1 on error.
+int cuda_noise_heightmap(
+    CudaNoiseContext* ctx,
+    const ColumnParams* columns, int gridW, int gridH,
+    int cellX0, int cellZ0,
+    int x0, int z0, int w, int h,
+    int predicate,                      // HeightPredicate
+    int* heightsOut);
+
+// Wall-clock time of the last launch, in milliseconds, split by phase.
+// Any pointer may be NULL.
+void cuda_noise_last_timings(const CudaNoiseContext* ctx,
+                             float* msUpload, float* msColumns,
+                             float* msHeights, float* msDownload);
 
 #ifdef __cplusplus
 }
+#endif
+
+// ============================================================================
+// High-level host API (implemented in village_noise_host.cpp)
+//
+// These take the plain cubiomes/SurfaceGen structures and handle the
+// conversion, the CPU-side biome work and the batching.
+// ============================================================================
+
+#ifdef __cplusplus
+
+struct SurfaceGen_s;
+typedef struct SurfaceGen_s SurfaceGen;
+typedef struct SurfaceNoise SurfaceNoise;
+
+void convertSurfaceNoise(GpuSurfaceNoise* dst, const SurfaceNoise* src);
+void convertSurfaceGenConfig(GpuSurfaceGenConfig* dst, const SurfaceGen* src);
+
+// Opaque high-level handle. Owns a CudaNoiseContext plus the CPU-side scratch.
+class CudaHeightBatcher;
+
 #endif

@@ -1,0 +1,34 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build: bench_village",
+            "type": "shell",
+            "command": "make",
+            "args": ["-C", "c/cuda", "bench_village"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": [],
+            "group": "build",
+            "presentation": { "reveal": "silent", "panel": "shared" }
+        },
+        {
+            "label": "build: search_village_cuda",
+            "type": "shell",
+            "command": "make",
+            "args": ["-C", "c/cuda", "search_village_cuda"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": [],
+            "group": "build",
+            "presentation": { "reveal": "silent", "panel": "shared" }
+        },
+        {
+            "label": "build: tous les tests CUDA",
+            "type": "shell",
+            "command": "make",
+            "args": ["-C", "c/cuda", "test_cuda", "test_village_cuda", "bench_village", "search_village_cuda"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": [],
+            "group": "build"
+        }
+    ]
+}
