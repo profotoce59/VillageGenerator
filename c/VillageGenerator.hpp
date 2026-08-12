@@ -105,9 +105,15 @@ enum class PoolType {
 class VoxelShape;
 
 // Info d'un bloc jigsaw (point d'attache) – comme Java BlockJigsawInfo
+//
+// jointName pointe dans les tables statiques de c/jigsaw/*.hpp, jamais dans une
+// chaîne temporaire. C'était un std::string : ces structures sont construites
+// et mélangées des millions de fois par village, et les constructions/échanges
+// de chaînes dominaient le profil. La comparaison reste une comparaison de
+// valeur (cf. canAttach15), le comportement est inchangé.
 struct BlockJigsawInfo {
     PoolType poolType;
-    std::string jointName;
+    const char* jointName;
     BPos pos;           // position monde (après rotation + offset)
     BlockDirection front;
 

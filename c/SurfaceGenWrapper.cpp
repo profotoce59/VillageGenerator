@@ -1,4 +1,5 @@
 #include "SurfaceGenWrapper.hpp"
+#include "Profiler.hpp"
 #include <cstdlib>
 #include <new>
 #include <iostream>
@@ -31,6 +32,7 @@ void SurfaceGenWrapper::setHeightProvider(HeightProvider* provider) {
 HeightProvider* SurfaceGenWrapper::getHeightProvider() { return g_heightProvider; }
 
 void SurfaceGenWrapper::prefetchRegion(int x0, int z0, int w, int h) {
+    VPROF_SCOPE(VZ_PREFETCH);
     prefetchGeneration = 0;
     if (!g_heightProvider || !sg || w <= 0 || h <= 0) return;
     prefetchGeneration = g_heightProvider->prefetch(sg, x0, z0, w, h);
@@ -49,6 +51,7 @@ int SurfaceGenWrapper::worldSurfaceWGPredicate(Block block, void* user) {
 }
 
 SurfaceGenWrapper::SurfaceGenWrapper(uint64_t worldSeed, int mcVersion) {
+    VPROF_SCOPE(VZ_SURFACEGEN_CTOR);
     // Allouer le contexte cubiomes
     ctx = (CubiomesContext*)malloc(sizeof(CubiomesContext));
     if (!ctx) {
@@ -87,6 +90,7 @@ int SurfaceGenWrapper::generateColumnFromY(int x, int z, BlockPredicate predicat
     if (!predicate) {
         predicate = defaultNotAirPredicate;
     }
+    VPROF_SCOPE(VZ_HEIGHT_QUERY);
     g_stats.columnQueries++;
     if (x < g_stats.minX) g_stats.minX = x;
     if (x > g_stats.maxX) g_stats.maxX = x;

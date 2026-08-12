@@ -47,3 +47,5 @@ c/cuda/bench_village.exe
 c/cuda/search_village_cuda
 c/cuda/search_village_cuda.exe
 c/cuda/*.log
+c/cuda/profile_village
+c/cuda/profile_village.exe

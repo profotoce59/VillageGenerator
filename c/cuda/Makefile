@@ -109,6 +109,22 @@ bench_village: bench_village.cpp cuda_height_provider.cpp cuda_height_provider.h
 		bench_village.cpp cuda_height_provider.cpp $(VILLAGE_SRC) \
 		$(HOST_OBJ) $(LIB) $(LIBCUBIOMES) -o $@
 
+# Profil par zones. Compilé à part avec -DVILLAGE_PROFILE pour que les sondes
+# n'existent pas dans bench_village / search_village_cuda.
+profile_village: profile_village.cpp cuda_height_provider.cpp cuda_height_provider.hpp \
+                 $(PARENT_DIR)/Profiler.hpp $(VILLAGE_SRC) $(LIB) $(LIBCUBIOMES) $(HOST_OBJ)
+	$(NVCC) $(NVCC_FLAGS) -DVILLAGE_PROFILE -Xcompiler -wd4267 -Xcompiler -wd4244 \
+		profile_village.cpp cuda_height_provider.cpp $(VILLAGE_SRC) \
+		$(HOST_OBJ) $(LIB) $(LIBCUBIOMES) -o $@
+
+profile profile-c: export CUBIOMES_LAYER_CACHE = 0
+profile: profile_village
+	./profile_village.exe --cuda --count $(PROFILE_COUNT)
+profile-c: profile_village
+	./profile_village.exe --c    --count $(PROFILE_COUNT)
+
+PROFILE_COUNT ?= 300
+
 # Recherche de villages à forte densité de forgerons.
 search_village_cuda: search_village_cuda.cpp cuda_height_provider.cpp cuda_height_provider.hpp \
                      $(VILLAGE_SRC) $(LIB) $(LIBCUBIOMES) $(HOST_OBJ)
@@ -137,4 +153,4 @@ bench-cuda: bench_village
 	./bench_village.exe --cuda --seed $(BENCH_SEED) --count $(BENCH_COUNT)
 
 clean:
-	rm -f *.obj *.o *.lib *.exp *.exe *.pdb test_cuda test_village_cuda bench_village search_village_cuda
+	rm -f *.obj *.o *.lib *.exp *.exe *.pdb test_cuda test_village_cuda bench_village search_village_cuda profile_village

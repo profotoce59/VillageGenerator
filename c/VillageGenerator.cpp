@@ -11,8 +11,11 @@
 #include "BiomeSource.hpp"
 #include "JigSawPool.hpp"
 #include "SurfaceGenWrapper.hpp"
+#include "Profiler.hpp"
 #include <algorithm>
 #include <stdexcept>
+#include <cstring>
+#include <unordered_map>
 
 // JigsawBlocks data - inclure avant les headers générés
 struct JigsawBlockEntry {
@@ -80,8 +83,14 @@ BPos VillageGenerator::Piece::getTransformedPos(const BPos& relativePos) const {
 
 // BlockJigsawInfo::canAttach15 – comme Java (direction opposée + même jointName)
 bool BlockJigsawInfo::canAttach15(const BlockJigsawInfo& other) const {
-    return BlockRotationHelper::getOpposite(other.front) == front
-        && jointName == other.jointName;
+    if (BlockRotationHelper::getOpposite(other.front) != front)
+        return false;
+    // Comparaison de valeur, comme avec les std::string d'avant. Les noms
+    // viennent de littéraux souvent mis en commun par le compilateur, d'où le
+    // test de pointeur d'abord.
+    if (jointName == other.jointName) return true;
+    if (!jointName || !other.jointName) return false;
+    return strcmp(jointName, other.jointName) == 0;
 }
 
 // BlockRotationHelper::getShuffled – Java BlockRotation.getShuffled(rand)
@@ -94,68 +103,111 @@ std::vector<BlockRotation> BlockRotationHelper::getShuffled(ChunkRand& rand) {
     return rots;
 }
 
-// Entrée jigsaw brute (template → liste (poolType, jointName, localPos, front))
-struct JigsawEntry {
-    PoolType poolType;
-    std::string jointName;
-    BPos localPos;
-    BlockDirection front;
-};
+/**
+ * Cache de VillagePool::getTemplates.
+ *
+ * getTemplates reconstruit son vecteur (et donc un std::string par entrée) à
+ * chaque appel, alors que le résultat ne dépend que de (villageType, poolType).
+ * Il est appelé deux fois par bloc jigsaw, soit des centaines de milliers de
+ * fois par lot de villages. thread_local plutôt que static : la recherche peut
+ * un jour être multi-thread, et les entrées ne sont jamais invalidées.
+ */
+static const std::vector<TemplateEntry>& cachedTemplates(
+    const VillagePool* pool, VillageType villageType, PoolType type)
+{
+    thread_local std::unordered_map<int, std::vector<TemplateEntry>> cache;
+    const int key = (int)villageType * 256 + (int)type;
+    auto it = cache.find(key);
+    if (it != cache.end()) return it->second;
+    // unordered_map est à nœuds : les références restent valides après rehash,
+    // ce sur quoi s'appuient les pointeurs conservés par l'appelant.
+    return cache.emplace(key, pool->getTemplates(type)).first->second;
+}
 
-static std::vector<JigsawEntry> getJigsawBlocksForTemplate(const std::string& name, VillageType villageType) {
+// Table jigsaw brute d'un template : pointeur dans les données statiques de
+// c/jigsaw/*.hpp, pas de copie.
+static bool lookupJigsawTable(const std::string& name, VillageType villageType,
+                              const JigsawBlockEntry*& data, size_t& count) {
+    data = nullptr;
+    count = 0;
+    switch (villageType) {
+        case VillageType::DESERT:  return getDesertVillageJigsawBlocksFast(name, data, count);
+        case VillageType::PLAINS:  return getPlainsVillageJigsawBlockFast(name, data, count);
+        case VillageType::TAIGA:   return getTaigaVillageJigsawBlocksFast(name, data, count);
+        case VillageType::SAVANNA: return getSavannaVillageJigsawBlocksFast(name, data, count);
+        case VillageType::SNOWY:   return getSnowyVillageJigsawBlocksFast(name, data, count);
+        default:                   return false;
+    }
+}
+
+/**
+ * Remplit `out` avec les blocs jigsaw du template, tournés en coordonnées monde
+ * puis mélangés.
+ *
+ * `out` est fourni par l'appelant et réutilisé : cette fonction est appelée
+ * ~11 000 fois par village (une fois par pièce candidate et par rotation), donc
+ * une allocation par appel se voyait dans le profil. La version d'origine en
+ * faisait deux, plus une table intermédiaire de JigsawEntry.
+ *
+ * Le mélange reste identique : ChunkRand::shuffle ne consomme du hasard qu'en
+ * fonction de out.size(), pas du contenu.
+ */
+// Variante prenant la table déjà résolue : la recherche par nom ne dépend pas
+// de la rotation, l'appelant la sort donc de la boucle sur les 4 rotations.
+static void getShuffledJigsawBlocksFrom(
+    const JigsawBlockEntry* data, size_t count,
+    const BPos& piecePos, BlockRotation rotation, ChunkRand& rand,
+    std::vector<BlockJigsawInfo>& out)
+{
+    VPROF_SCOPE(VZ_JIGSAW_BLOCKS);
+    out.clear();
+    if (data) {
+        out.reserve(count);
+        for (size_t i = 0; i < count; i++) {
+            BPos rotated = BlockRotationHelper::rotate(
+                BPos(data[i].x, data[i].y, data[i].z), rotation);
+            BPos worldPos = piecePos.add(rotated.x, rotated.y, rotated.z);
+            BlockDirection worldFront = BlockRotationHelper::rotate(data[i].front, rotation);
+            out.push_back({data[i].poolType, data[i].jointName, worldPos, worldFront});
+        }
+    }
+    rand.shuffle(out);
+}
+
+static void getShuffledJigsawBlocks(
+    const std::string& templateName, const BPos& piecePos, BlockRotation rotation,
+    VillageType villageType, ChunkRand& rand,
+    std::vector<BlockJigsawInfo>& out)
+{
+    VPROF_SCOPE(VZ_JIGSAW_BLOCKS);
     const JigsawBlockEntry* data = nullptr;
     size_t count = 0;
-    bool found = false;
+    bool found = lookupJigsawTable(templateName, villageType, data, count);
 
-    switch (villageType) {
-        case VillageType::DESERT:
-            found = getDesertVillageJigsawBlocksFast(name, data, count);
-            break;
-        case VillageType::PLAINS:
-            found = getPlainsVillageJigsawBlockFast(name, data, count);
-            break;
-        case VillageType::TAIGA:
-            found = getTaigaVillageJigsawBlocksFast(name, data, count);
-            break;
-        case VillageType::SAVANNA:
-            found = getSavannaVillageJigsawBlocksFast(name, data, count);
-            break;
-        case VillageType::SNOWY:
-            found = getSnowyVillageJigsawBlocksFast(name, data, count);
-            break;
-        default:
-            break;
-    }
-
-    std::vector<JigsawEntry> out;
+    out.clear();
     if (found && data) {
         out.reserve(count);
         for (size_t i = 0; i < count; i++) {
-            out.push_back({
-                data[i].poolType,
-                data[i].jointName,
-                BPos(data[i].x, data[i].y, data[i].z),
-                data[i].front
-            });
+            BPos rotated = BlockRotationHelper::rotate(
+                BPos(data[i].x, data[i].y, data[i].z), rotation);
+            BPos worldPos = piecePos.add(rotated.x, rotated.y, rotated.z);
+            BlockDirection worldFront = BlockRotationHelper::rotate(data[i].front, rotation);
+            out.push_back({data[i].poolType, data[i].jointName, worldPos, worldFront});
         }
     }
-    return out;
+    rand.shuffle(out);
 }
 
-static std::vector<BlockJigsawInfo> getShuffledJigsawBlocks(
-    const VillageGenerator::Piece* piece, VillageType villageType, ChunkRand& rand)
-{
-    std::vector<JigsawEntry> entries = getJigsawBlocksForTemplate(piece->name, villageType);
-    std::vector<BlockJigsawInfo> list;
-    list.reserve(entries.size());
-    for (const auto& e : entries) {
-        BPos rotated = BlockRotationHelper::rotate(e.localPos, piece->rotation);
-        BPos worldPos = piece->pos.add(rotated.x, rotated.y, rotated.z);
-        BlockDirection worldFront = BlockRotationHelper::rotate(e.front, piece->rotation);
-        list.push_back({e.poolType, e.jointName, worldPos, worldFront});
-    }
-    rand.shuffle(list);
-    return list;
+// Variante remplissant un buffer réutilisé : évite d'allouer un vecteur de 4
+// éléments par pièce candidate. Le mélange est identique, ChunkRand::shuffle ne
+// dépendant que de la taille.
+static void getShuffledRotations(ChunkRand& rand, std::vector<BlockRotation>& out) {
+    out.clear();
+    out.push_back(BlockRotation::NONE);
+    out.push_back(BlockRotation::CLOCKWISE_90);
+    out.push_back(BlockRotation::CLOCKWISE_180);
+    out.push_back(BlockRotation::COUNTERCLOCKWISE_90);
+    rand.shuffle(out);
 }
 
 static PoolType getFallbackPoolType(VillageType villageType, PoolType jointType) {
@@ -196,6 +248,7 @@ static PoolType getFallbackPoolType(VillageType villageType, PoolType jointType)
 // Java isNotEmpty(mutableobject1, box3) → true si on peut placer
 // Vérifie: 1) la pièce est dans les bounds du village, 2) pas de collision
 static bool isNotEmpty(const VoxelShape* vs, const BlockBox& box) {
+    VPROF_SCOPE(VZ_VOXEL_CHECK);
     if (!vs || vs->isNull()) return true;
 
     // Vérifier les bounds (comme Java: box doit être DANS le VoxelShape)
@@ -247,6 +300,7 @@ public:
     void addToPlacing(Piece* piece) { placing.push_back(piece); }
 
     void run(VillageType villageType, ChunkRand& rand) {
+        VPROF_SCOPE(VZ_ASSEMBLE);
         while (!placing.empty()) {
             Piece* p = placing.front();
             placing.pop_front();
@@ -261,10 +315,19 @@ public:
         const BlockBox& box = piece->box;
         const int minY = box.minY;
 
-        auto pool = createVillagePool(villageType);
+        std::unique_ptr<VillagePool> pool;
+        {
+            VPROF_SCOPE(VZ_POOL_CREATE);
+            pool = createVillagePool(villageType);
+        }
         if (!pool) return;
 
-        std::vector<BlockJigsawInfo> jigsawBlocks = getShuffledJigsawBlocks(piece, villageType, rand);
+        // Buffers membres réutilisés : tryPlacing n'est jamais réentrant
+        // (run() dépile séquentiellement), et le buffer externe doit rester
+        // valide pendant que l'interne est rerempli, d'où deux buffers.
+        std::vector<BlockJigsawInfo>& jigsawBlocks = bufOuter;
+        getShuffledJigsawBlocks(piece->name, piece->pos, piece->rotation,
+                                villageType, rand, jigsawBlocks);
 
         VoxelShape mutableobject;
 
@@ -277,11 +340,13 @@ public:
             int state = -1;
 
             PoolType jointType = blockJigsawInfo.poolType;
-            auto mainTemplates = pool->getTemplates(jointType);
+            const std::vector<TemplateEntry>& mainTemplates =
+                cachedTemplates(pool.get(), villageType, jointType);
             if (mainTemplates.empty()) continue;
 
             PoolType fallbackType = getFallbackPoolType(villageType, jointType);
-            auto fallbackTemplates = pool->getTemplates(fallbackType);
+            const std::vector<TemplateEntry>& fallbackTemplates =
+                cachedTemplates(pool.get(), villageType, fallbackType);
             if (fallbackTemplates.empty() && mainTemplates.empty()) continue;
 
             bool isInside = box.contains(relativeBlockPos);
@@ -295,14 +360,23 @@ public:
                 mutableobject1 = globalShape;
             }
 
-            std::vector<std::string> list;
+            // Listes de pointeurs et non de std::string : la liste est étendue
+            // par poids (donc bien plus longue que la table) puis mélangée, ce
+            // qui copiait des chaînes en masse. Les cibles vivent dans le cache
+            // de templates, dont les entrées sont stables.
+            // Le mélange est inchangé : ChunkRand::shuffle ne dépend que de la
+            // taille de la liste.
+            std::vector<const std::string*>& list = bufNames;
+            list.clear();
+            {
+            VPROF_SCOPE(VZ_TEMPLATE_LIST);
             if (depth != maxDepth && !mainTemplates.empty()) {
                 size_t total = 0;
                 for (const auto& t : mainTemplates) total += t.weight;
                 list.reserve(total);
                 for (const auto& t : mainTemplates) {
                     for (int w = 0; w < t.weight; ++w) {
-                        list.push_back(t.name);
+                        list.push_back(&t.name);
                     }
                 }
                 if (!list.empty()) {
@@ -311,33 +385,48 @@ public:
                 }
             }
             if (!fallbackTemplates.empty()) {
-                std::vector<std::string> listtmp;
+                std::vector<const std::string*>& listtmp = bufNamesFallback;
+                listtmp.clear();
                 size_t total = 0;
                 for (const auto& t : fallbackTemplates) total += t.weight;
                 listtmp.reserve(total);
                 for (const auto& t : fallbackTemplates) {
                     for (int w = 0; w < t.weight; ++w) {
-                        listtmp.push_back(t.name);
+                        listtmp.push_back(&t.name);
                     }
                 }
                 if (!listtmp.empty()) {
                     rand.shuffle(listtmp);
                     rand.advance(1);
                 }
-                for (const auto& s : listtmp) list.push_back(s);
+                for (const auto* s : listtmp) list.push_back(s);
+            }
             }
 
-            for (const std::string& jigsawpiece1 : list) {
+            for (const std::string* jigsawpiece1Ptr : list) {
+                const std::string& jigsawpiece1 = *jigsawpiece1Ptr;
                 if (jigsawpiece1 == "empty") break;
-                auto rotations = BlockRotationHelper::getShuffled(rand);
-                for (BlockRotation rotation1 : rotations) {
-                    BPos size1;
-                    bool hasSize = get_bpos(jigsawpiece1.c_str(), &size1);
+
+                // Ces deux recherches par nom ne dépendent pas de la rotation :
+                // les faire dans la boucle les répétait 4 fois pour rien.
+                BPos size1;
+                bool hasSize;
+                { VPROF_SCOPE(VZ_SIZE_LOOKUP); hasSize = get_bpos(jigsawpiece1.c_str(), &size1); }
+                const JigsawBlockEntry* jigsawData = nullptr;
+                size_t jigsawCount = 0;
+                if (!lookupJigsawTable(jigsawpiece1, villageType, jigsawData, jigsawCount))
+                    jigsawData = nullptr;
+
+                getShuffledRotations(rand, bufRotations);
+                for (BlockRotation rotation1 : bufRotations) {
                     BlockBox box1(0, 0, 0, 0, 0, 0);
                     if (hasSize) box1 = BlockBox::getBoundingBox(BPos(0, 0, 0), rotation1, size1);
-                    VillageGenerator::Piece piece1(jigsawpiece1, BPos(0, 0, 0), box1, rotation1,
-                        pool->getPlacementBehaviour(jointType), 0);
-                    std::vector<BlockJigsawInfo> list1 = getShuffledJigsawBlocks(&piece1, villageType, rand);
+                    // Pas de Piece temporaire ici : seuls le nom, la position
+                    // et la rotation servaient, et la construire copiait un
+                    // std::string 3,3 millions de fois par lot de villages.
+                    std::vector<BlockJigsawInfo>& list1 = bufInner;
+                    getShuffledJigsawBlocksFrom(jigsawData, jigsawCount,
+                                                BPos(0, 0, 0), rotation1, rand, list1);
 
                     int i1 = 0;
                     if (expansionHack && (box1.maxY - box1.minY) <= 16) {
@@ -420,6 +509,9 @@ private:
     VoxelShape* globalShape;  // VoxelShape partagé par toutes les pièces
     std::unique_ptr<SurfaceGenWrapper> heightMapGen;
     std::deque<Piece*> placing;
+    std::vector<BlockJigsawInfo> bufOuter, bufInner;
+    std::vector<BlockRotation> bufRotations;
+    std::vector<const std::string*> bufNames, bufNamesFallback;
     std::string selectRandomTemplate(const std::vector<TemplateEntry>& templates, std::mt19937_64& rng) {
         if (templates.empty()) return "";
         std::uniform_int_distribution<size_t> dist(0, templates.size() - 1);
@@ -495,7 +587,8 @@ bool VillageGenerator::generate(TerrainGenerator* generator, int chunkX, int chu
     int centerZ = (box.minZ + box.maxZ) / 2;
 
     // 5) Ground Y using height map
-    int heightY = generator->getHeightOnGround(centerX, centerZ);
+    int heightY;
+    { VPROF_SCOPE(VZ_HEIGHT_CENTER); heightY = generator->getHeightOnGround(centerX, centerZ); }
     int y = bPos.y + heightY;
     int centerY = box.minY + 1;
 
@@ -530,6 +623,7 @@ bool VillageGenerator::generate(TerrainGenerator* generator, int chunkX, int chu
 
 bool VillageGenerator::generate(TerrainGenerator* generator, int chunkX, int chunkZ, ChunkRand& rand,
                               Biome* biomeWanted, bool useHeightMapOptimizer, bool towncenterOptimizer) {
+    VPROF_SCOPE(VZ_VILLAGE_TOTAL);
     this->useHeightMapOptimizer = useHeightMapOptimizer;
     this->towncenterOptimizer = towncenterOptimizer;
     
