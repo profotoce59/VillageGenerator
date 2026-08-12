@@ -511,7 +511,6 @@ enum { HT_SIZE = (int)next_pow2_u32((N_ENTRIES * LOAD_FACTOR_DEN) / LOAD_FACTOR_
 
 /* Slots stockent l'index dans ENTRIES, -1 = vide */
 static int32_t HT_INDEX[HT_SIZE];
-static int inited = 0;
 
 /* FNV-1a 64 -> 32 (rapide & bonne distrib) */
 static inline uint32_t fnv1a32(const char *s){
@@ -524,8 +523,7 @@ static inline uint32_t fnv1a32(const char *s){
     return (uint32_t)(h ^ (h >> 32));
 }
 
-static void ht_init_once(void){
-    if (inited) return;
+static bool ht_build(void){
     for (int i=0;i<HT_SIZE;i++) HT_INDEX[i] = -1;
     for (int i=0;i<N_ENTRIES;i++){
         const char *k = STRUCTURE_SIZE[i].key;
@@ -538,7 +536,16 @@ static void ht_init_once(void){
         }
         HT_INDEX[idx] = i;
     }
-    inited = 1;
+    return true;
+}
+
+/* L'ancien drapeau `static int inited` n'était pas atomique : deux threads
+ * appelant get_bpos() simultanément au démarrage pouvaient construire la table
+ * en même temps. Une statique locale de fonction est initialisée exactement une
+ * fois, les autres threads attendant, garanti par le standard depuis C++11. */
+static inline void ht_init_once(void){
+    static const bool built = ht_build();
+    (void)built;
 }
 
 bool get_bpos(const char *key, BPos *out){

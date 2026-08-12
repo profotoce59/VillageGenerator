@@ -269,6 +269,7 @@ __global__ void compute_noise_columns(
     const double*              __restrict__ randomOffsets,
     int numColumns,
     int startSizeY,
+    int minCellY,               // cellules < minCellY jamais lues par le scan
     double* __restrict__ noiseGrid)
 {
     // Stage the permutation tables in shared memory: samplePerlin does 8
@@ -282,9 +283,12 @@ __global__ void compute_noise_columns(
     }
     __syncthreads();
 
+    // On ne calcule que la tranche [minCellY, startSizeY) : le scan de hauteur
+    // s'arrête à minCellY, tout ce qui est en dessous ne serait jamais lu.
+    const int nY = startSizeY - minCellY;
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    int col = tid / startSizeY;
-    int y   = tid - col * startSizeY;
+    int col = tid / nY;
+    int y   = minCellY + (tid - col * nY);
 
     if (col >= numColumns)
         return;
@@ -318,7 +322,7 @@ __global__ void compute_noise_columns(
 
     // On the CPU the column buffer is calloc'd and only [0, startSizeY) is
     // written, so index startSizeY reads back as 0.0. Reproduce that.
-    if (y == 0)
+    if (y == minCellY)
         noiseGrid[col * stride + startSizeY] = 0.0;
 }
 
@@ -332,11 +336,11 @@ __device__ static inline int scan_column(
     const double* __restrict__ col1,        // (cellX,   cellZ+1)
     const double* __restrict__ col2,        // (cellX+1, cellZ)
     const double* __restrict__ col3,        // (cellX+1, cellZ+1)
-    int startSizeY,
+    int startSizeY, int minCellY,
     double percentX, double percentZ,
     int predicate)
 {
-    for (int cellY = startSizeY - 1; cellY >= 0; --cellY) {
+    for (int cellY = startSizeY - 1; cellY >= minCellY; --cellY) {
         double xyz    = col0[cellY];
         double xyz1   = col1[cellY];
         double x1yz   = col2[cellY];
@@ -373,7 +377,7 @@ __device__ static inline int scan_column(
 __global__ void compute_heights_scattered(
     const GpuSurfaceGenConfig* __restrict__ cfg,
     const double* __restrict__ noiseGrid,
-    int startSizeY,
+    int startSizeY, int minCellY,
     const int* __restrict__ queryX,
     const int* __restrict__ queryZ,
     const int* __restrict__ cornerIndices,      // [numQueries * 4]
@@ -404,7 +408,7 @@ __global__ void compute_heights_scattered(
     heightsOut[q] = scan_column(cfg,
         noiseGrid + (size_t)c0 * stride, noiseGrid + (size_t)c1 * stride,
         noiseGrid + (size_t)c2 * stride, noiseGrid + (size_t)c3 * stride,
-        startSizeY, percentX, percentZ, predicate);
+        startSizeY, minCellY, percentX, percentZ, predicate);
 }
 
 // ============================================================================
@@ -414,7 +418,7 @@ __global__ void compute_heights_scattered(
 __global__ void compute_heightmap_rect(
     const GpuSurfaceGenConfig* __restrict__ cfg,
     const double* __restrict__ noiseGrid,
-    int startSizeY,
+    int startSizeY, int minCellY,
     int gridW, int cellX0, int cellZ0,
     int x0, int z0, int w, int h,
     int predicate,
@@ -446,7 +450,7 @@ __global__ void compute_heightmap_rect(
         noiseGrid + (size_t)(c0 + gridW)     * stride,
         noiseGrid + (size_t)(c0 + 1)         * stride,
         noiseGrid + (size_t)(c0 + gridW + 1) * stride,
-        startSizeY, percentX, percentZ, predicate);
+        startSizeY, minCellY, percentX, percentZ, predicate);
 }
 
 // ============================================================================
@@ -590,8 +594,27 @@ void cuda_noise_last_timings(const CudaNoiseContext* ctx,
     if (msDownload) *msDownload = ctx->msDownload;
 }
 
+
+// Plancher du scan de hauteur : avec le prédicat NOT_AIR, get_block_from_noise
+// renvoie WATER dès que y < seaLevel, donc le scan touche TOUJOURS un bloc dans
+// la cellule contenant y = seaLevel-1 et ne descend jamais plus bas. Inutile de
+// calculer le bruit des cellules du dessous : c'est environ la moitié du volume
+// quand startSizeY vaut 11 a 15.
+// Avec STONE le scan peut aller jusqu'en bas, donc pas de plancher.
+static inline int height_scan_floor(const GpuSurfaceGenConfig* cfg, int predicate)
+{
+    if (predicate == HEIGHT_PRED_STONE) return 0;
+    if (cfg->chunkHeight <= 0 || cfg->seaLevel <= 0) return 0;
+    int floorCell = (cfg->seaLevel - 1) / cfg->chunkHeight;
+    if (floorCell < 0) floorCell = 0;
+    if (floorCell > cfg->startSizeY - 1) floorCell = cfg->startSizeY - 1;
+    if (floorCell < 0) floorCell = 0;
+    return floorCell;
+}
+
 // Launch kernel 1. Returns -1 on error.
-static int launch_columns(CudaNoiseContext* ctx, const ColumnParams* columns, int numColumns)
+static int launch_columns(CudaNoiseContext* ctx, const ColumnParams* columns,
+                          int numColumns, int minCellY)
 {
     const int startSizeY = ctx->hostCfg.startSizeY;
 
@@ -611,7 +634,7 @@ static int launch_columns(CudaNoiseContext* ctx, const ColumnParams* columns, in
     }
     CUDA_CHECK_INT(cudaGetLastError());
 
-    long long threads = (long long)numColumns * startSizeY;
+    long long threads = (long long)numColumns * (startSizeY - minCellY);
     if (threads <= 0) {
         fprintf(stderr, "launch_columns: nothing to launch (numColumns=%d, startSizeY=%d)\n",
                 numColumns, startSizeY);
@@ -620,7 +643,7 @@ static int launch_columns(CudaNoiseContext* ctx, const ColumnParams* columns, in
     int gridSize = (int)((threads + NOISE_BLOCK - 1) / NOISE_BLOCK);
     compute_noise_columns<<<gridSize, NOISE_BLOCK, PERM_SURF_BYTES>>>(
         ctx->d_sn, ctx->d_cfg, ctx->d_columns, ctx->d_randomOffsets,
-        numColumns, startSizeY, ctx->d_noiseGrid);
+        numColumns, startSizeY, minCellY, ctx->d_noiseGrid);
     CUDA_CHECK_INT(cudaGetLastError());
     CUDA_CHECK_INT(cudaEventRecord(ctx->evColumns));
     return 0;
@@ -659,7 +682,8 @@ int cuda_noise_batch_heights(
         return -1;
     }
 
-    if (launch_columns(ctx, columns, numColumns) != 0) return -1;
+    const int minCellY = height_scan_floor(&ctx->hostCfg, predicate);
+    if (launch_columns(ctx, columns, numColumns, minCellY) != 0) return -1;
 
     CUDA_CHECK_INT(cudaMemcpyAsync(ctx->d_queryX, queryX,
         sizeof(int) * (size_t)numQueries, cudaMemcpyHostToDevice));
@@ -670,7 +694,7 @@ int cuda_noise_batch_heights(
 
     int gridSize = (numQueries + HEIGHT_BLOCK - 1) / HEIGHT_BLOCK;
     compute_heights_scattered<<<gridSize, HEIGHT_BLOCK>>>(
-        ctx->d_cfg, ctx->d_noiseGrid, ctx->hostCfg.startSizeY,
+        ctx->d_cfg, ctx->d_noiseGrid, ctx->hostCfg.startSizeY, minCellY,
         ctx->d_queryX, ctx->d_queryZ, ctx->d_cornerIndices,
         numQueries, predicate, ctx->d_heights);
     CUDA_CHECK_INT(cudaGetLastError());
@@ -698,11 +722,12 @@ int cuda_noise_heightmap(
         return -1;
     }
 
-    if (launch_columns(ctx, columns, numColumns) != 0) return -1;
+    const int minCellY = height_scan_floor(&ctx->hostCfg, predicate);
+    if (launch_columns(ctx, columns, numColumns, minCellY) != 0) return -1;
 
     int gridSize = (numQueries + HEIGHT_BLOCK - 1) / HEIGHT_BLOCK;
     compute_heightmap_rect<<<gridSize, HEIGHT_BLOCK>>>(
-        ctx->d_cfg, ctx->d_noiseGrid, ctx->hostCfg.startSizeY,
+        ctx->d_cfg, ctx->d_noiseGrid, ctx->hostCfg.startSizeY, minCellY,
         gridW, cellX0, cellZ0, x0, z0, w, h, predicate, ctx->d_heights);
     CUDA_CHECK_INT(cudaGetLastError());
 

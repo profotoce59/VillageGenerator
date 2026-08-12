@@ -45,10 +45,14 @@ public:
 class SurfaceGenWrapper {
 public:
     /**
-     * Installe le fournisseur de hauteurs partagé (non possédé, peut être nullptr).
+     * Installe le fournisseur de hauteurs (non possédé, peut être nullptr).
      * Les SurfaceGenWrapper créés au fil de la génération le récupèrent
      * automatiquement — c'est nécessaire parce que l'Assembler fabrique son
      * propre wrapper en interne.
+     *
+     * Le fournisseur est PAR THREAD : un CudaHeightProvider possède un contexte
+     * CUDA et une zone pré-calculée, donc il ne peut pas être partagé. Chaque
+     * thread de travail doit appeler setHeightProvider() avec le sien.
      */
     static void setHeightProvider(HeightProvider* provider);
     static HeightProvider* getHeightProvider();
@@ -135,10 +139,12 @@ public:
     SurfaceGen* getSurfaceGen() { return sg; }
 
     /**
-     * Compteurs de requêtes, cumulés sur tout le processus.
-     * Les instances de SurfaceGenWrapper sont créées et détruites au fil de la
-     * génération (l'Assembler en fabrique une par village), donc des compteurs
-     * d'instance seraient invisibles depuis l'extérieur.
+     * Compteurs de requêtes. Les instances de SurfaceGenWrapper sont créées et
+     * détruites au fil de la génération (l'Assembler en fabrique une par
+     * village), donc des compteurs d'instance seraient invisibles de l'extérieur.
+     *
+     * L'accumulation se fait dans un bloc par thread, sans verrou ni contention
+     * sur le chemin chaud. getStats() somme tous les blocs enregistrés.
      */
     struct Stats {
         uint64_t columnQueries;      // generateColumnFromY (inclut celles de getHeightOnGround)

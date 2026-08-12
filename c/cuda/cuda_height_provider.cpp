@@ -42,6 +42,15 @@ uint64_t CudaHeightProvider::prefetch(SurfaceGen* sg, int x0, int z0, int w, int
 
     x0_ = x0; z0_ = z0; w_ = w; h_ = h;
 
+    {   // temps GPU réels du lancement, mesurés par événements CUDA
+        float up = 0, cols = 0, hts = 0, dl = 0;
+        batcher_->lastGpuTimings(&up, &cols, &hts, &dl);
+        gpuUploadMs_   += up;
+        gpuColumnsMs_  += cols;
+        gpuHeightsMs_  += hts;
+        gpuDownloadMs_ += dl;
+    }
+
     double ms = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - t0).count();
     prefetchCount_++;

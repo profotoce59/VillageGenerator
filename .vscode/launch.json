@@ -1,55 +1,77 @@
 {
-    // Benchmark de génération de villages : un job "C" et un job "CUDA".
+    // Jobs de génération / recherche de villages.
     //
     // IMPORTANT : lancer avec « Exécuter sans débogage » (Ctrl+F5). Sous le
-    // débogueur, cppvsdbg ralentit fortement le processus et les deux jobs ne
+    // débogueur, cppvsdbg ralentit fortement le processus et les mesures ne
     // sont plus comparables.
     //
-    // Les deux jobs utilisent le MÊME binaire, compilé par le même compilateur ;
-    // seul --c / --cuda change. Comparer un binaire mingw à un binaire MSVC
-    // mesurerait surtout la différence entre les deux compilateurs.
+    // Les jobs de bench utilisent le MÊME binaire, compilé par le même
+    // compilateur ; seul --c / --cuda change. Comparer un binaire mingw à un
+    // binaire MSVC mesurerait surtout la différence entre les deux compilateurs.
     //
     // CUBIOMES_LAYER_CACHE=0 est nécessaire : le cache de layer de cubiomes
-    // fausse les biomes des requêtes 1x1, les deux backends ne généreraient
-    // alors pas les mêmes villages (cf. c/test_layer_cache_consistency.c).
+    // fausse les biomes des requêtes 1x1 (cf. c/test_layer_cache_consistency.c).
     //
-    // Chaque job affiche un checksum de toutes les pièces : s'ils sont égaux,
-    // les deux ont produit exactement les mêmes villages.
+    // Le travail du bench est défini par un ENSEMBLE de world seeds, pas par un
+    // nombre de villages : l'ensemble produit est donc identique quel que soit
+    // le nombre de threads. Le checksum est commutatif — s'il est le même entre
+    // deux configurations, elles ont produit exactement les mêmes villages.
+    //
+    // Mesuré sur RTX 5070 + Ryzen 7 9700X : le GPU sature vers 6 threads
+    // (~725 villages/s). 4 threads en atteignent déjà ~92 %.
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Bench villages — C (CPU)",
+            "name": "Bench villages — CUDA (4 threads)",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/c/cuda/bench_village.exe",
-            "args": ["--c", "--seed", "1", "--count", "10000"],
+            "args": ["--cuda", "--seed", "1", "--worlds", "520", "--threads", "4"],
             "cwd": "${workspaceFolder}/c/cuda",
-            "environment": [
-                { "name": "CUBIOMES_LAYER_CACHE", "value": "0" }
-            ],
+            "environment": [{ "name": "CUBIOMES_LAYER_CACHE", "value": "0" }],
             "console": "integratedTerminal",
             "preLaunchTask": "build: bench_village"
         },
         {
-            "name": "Bench villages — CUDA (GPU)",
+            "name": "Bench villages — CUDA (1 thread)",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/c/cuda/bench_village.exe",
-            "args": ["--cuda", "--seed", "1", "--count", "10000"],
+            "args": ["--cuda", "--seed", "1", "--worlds", "520", "--threads", "1"],
             "cwd": "${workspaceFolder}/c/cuda",
-            "environment": [
-                { "name": "CUBIOMES_LAYER_CACHE", "value": "0" }
-            ],
+            "environment": [{ "name": "CUBIOMES_LAYER_CACHE", "value": "0" }],
+            "console": "integratedTerminal",
+            "preLaunchTask": "build: bench_village"
+        },
+        {
+            "name": "Bench villages — C (4 threads)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/c/cuda/bench_village.exe",
+            "args": ["--c", "--seed", "1", "--worlds", "520", "--threads", "4"],
+            "cwd": "${workspaceFolder}/c/cuda",
+            "environment": [{ "name": "CUBIOMES_LAYER_CACHE", "value": "0" }],
+            "console": "integratedTerminal",
+            "preLaunchTask": "build: bench_village"
+        },
+        {
+            "name": "Bench villages — scaling au choix",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/c/cuda/bench_village.exe",
+            "args": ["--cuda", "--seed", "1", "--worlds", "120",
+                     "--threads", "${input:nbThreads}"],
+            "cwd": "${workspaceFolder}/c/cuda",
+            "environment": [{ "name": "CUBIOMES_LAYER_CACHE", "value": "0" }],
             "console": "integratedTerminal",
             "preLaunchTask": "build: bench_village"
         },
         {
             // Tourne sans fin : arrêter avec le bouton stop de VS Code.
             // La structure seed de départ est tirée au hasard et imprimée en
-            // première ligne — la noter pour pouvoir rejouer la même recherche
-            // avec --seed.
+            // première ligne — la noter pour rejouer la même recherche (--seed).
             // Les trouvailles vont sur la console ET dans c/cuda/village_finds.log.
-            "name": "Recherche villages — CUDA (> 5 forgerons)",
+            "name": "Recherche villages — CUDA (> 5 forgerons, 4 threads)",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/c/cuda/search_village_cuda.exe",
@@ -57,17 +79,16 @@
                 "--smiths", "6",
                 "--pieces", "250",
                 "--worlds", "32",
+                "--threads", "4",
                 "--out", "village_finds.log"
             ],
             "cwd": "${workspaceFolder}/c/cuda",
-            "environment": [
-                { "name": "CUBIOMES_LAYER_CACHE", "value": "0" }
-            ],
+            "environment": [{ "name": "CUBIOMES_LAYER_CACHE", "value": "0" }],
             "console": "integratedTerminal",
             "preLaunchTask": "build: search_village_cuda"
         },
         {
-            "name": "Recherche villages — CUDA (seuil au choix)",
+            "name": "Recherche villages — CUDA (seuil et threads au choix)",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/c/cuda/search_village_cuda.exe",
@@ -75,40 +96,13 @@
                 "--smiths", "${input:seuilForgerons}",
                 "--pieces", "0",
                 "--worlds", "32",
+                "--threads", "${input:nbThreads}",
                 "--out", "village_finds.log"
             ],
             "cwd": "${workspaceFolder}/c/cuda",
-            "environment": [
-                { "name": "CUBIOMES_LAYER_CACHE", "value": "0" }
-            ],
+            "environment": [{ "name": "CUBIOMES_LAYER_CACHE", "value": "0" }],
             "console": "integratedTerminal",
             "preLaunchTask": "build: search_village_cuda"
-        },
-        {
-            "name": "Bench villages — C (rapide, 500)",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/c/cuda/bench_village.exe",
-            "args": ["--c", "--seed", "1", "--count", "500"],
-            "cwd": "${workspaceFolder}/c/cuda",
-            "environment": [
-                { "name": "CUBIOMES_LAYER_CACHE", "value": "0" }
-            ],
-            "console": "integratedTerminal",
-            "preLaunchTask": "build: bench_village"
-        },
-        {
-            "name": "Bench villages — CUDA (rapide, 500)",
-            "type": "cppvsdbg",
-            "request": "launch",
-            "program": "${workspaceFolder}/c/cuda/bench_village.exe",
-            "args": ["--cuda", "--seed", "1", "--count", "500"],
-            "cwd": "${workspaceFolder}/c/cuda",
-            "environment": [
-                { "name": "CUBIOMES_LAYER_CACHE", "value": "0" }
-            ],
-            "console": "integratedTerminal",
-            "preLaunchTask": "build: bench_village"
         }
     ],
     "inputs": [
@@ -118,6 +112,13 @@
             "description": "Journaliser à partir de combien de forgerons ?",
             "options": ["4", "5", "6", "7", "8"],
             "default": "6"
+        },
+        {
+            "id": "nbThreads",
+            "type": "pickString",
+            "description": "Combien de threads ? (le GPU sature vers 6)",
+            "options": ["1", "2", "4", "6", "8"],
+            "default": "4"
         }
     ]
 }

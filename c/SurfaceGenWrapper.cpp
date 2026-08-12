@@ -5,37 +5,79 @@
 #include <iostream>
 #include <cstdint>
 #include <chrono>
+#include <mutex>
+#include <vector>
 
-static SurfaceGenWrapper::Stats g_stats =
-    {0, 0, 0, 0, INT32_MAX, INT32_MIN, INT32_MAX, INT32_MIN, 0, 0};
-
-SurfaceGenWrapper::Stats SurfaceGenWrapper::getStats() { return g_stats; }
-void SurfaceGenWrapper::resetStats() {
-    g_stats = Stats{0, 0, 0, 0, INT32_MAX, INT32_MIN, INT32_MAX, INT32_MIN, 0, 0};
+static SurfaceGenWrapper::Stats emptyStats() {
+    return SurfaceGenWrapper::Stats{0, 0, 0, 0, INT32_MAX, INT32_MIN, INT32_MAX, INT32_MIN, 0, 0};
 }
 
-static HeightProvider* g_heightProvider = nullptr;
-static bool g_verifyProvider = false;
+// Un bloc de compteurs par thread, enregistré dans une liste globale pour que
+// getStats() puisse tout sommer. Les blocs ne sont jamais libérés : ils vivent
+// aussi longtemps que le processus, ce qui évite d'avoir à synchroniser la fin
+// des threads avec la lecture des stats.
+namespace {
+struct StatsBlock { SurfaceGenWrapper::Stats s; };
+std::mutex g_statsMutex;
+std::vector<StatsBlock*> g_statsBlocks;
+thread_local StatsBlock* t_statsBlock = nullptr;
 
-void SurfaceGenWrapper::setVerifyProvider(bool enabled) { g_verifyProvider = enabled; }
+StatsBlock& localStats() {
+    if (!t_statsBlock) {
+        t_statsBlock = new StatsBlock{emptyStats()};
+        std::lock_guard<std::mutex> lk(g_statsMutex);
+        g_statsBlocks.push_back(t_statsBlock);
+    }
+    return *t_statsBlock;
+}
+} // namespace
 
-static FILE* g_trace = nullptr;
+SurfaceGenWrapper::Stats SurfaceGenWrapper::getStats() {
+    Stats total = emptyStats();
+    std::lock_guard<std::mutex> lk(g_statsMutex);
+    for (const StatsBlock* b : g_statsBlocks) {
+        total.columnQueries   += b->s.columnQueries;
+        total.groundQueries   += b->s.groundQueries;
+        total.groundCacheHits += b->s.groundCacheHits;
+        total.columnNanos     += b->s.columnNanos;
+        total.providerHits    += b->s.providerHits;
+        total.providerMisses  += b->s.providerMisses;
+        if (b->s.minX < total.minX) total.minX = b->s.minX;
+        if (b->s.maxX > total.maxX) total.maxX = b->s.maxX;
+        if (b->s.minZ < total.minZ) total.minZ = b->s.minZ;
+        if (b->s.maxZ > total.maxZ) total.maxZ = b->s.maxZ;
+    }
+    return total;
+}
+
+void SurfaceGenWrapper::resetStats() {
+    std::lock_guard<std::mutex> lk(g_statsMutex);
+    for (StatsBlock* b : g_statsBlocks) b->s = emptyStats();
+}
+
+// Par thread : un CudaHeightProvider possède un contexte CUDA et une zone
+// pré-calculée, il ne peut pas être partagé entre threads.
+static thread_local HeightProvider* t_heightProvider = nullptr;
+static thread_local bool t_verifyProvider = false;
+static thread_local FILE* t_trace = nullptr;
+
+void SurfaceGenWrapper::setVerifyProvider(bool enabled) { t_verifyProvider = enabled; }
 
 void SurfaceGenWrapper::setQueryTrace(const char* path) {
-    if (g_trace) { fclose(g_trace); g_trace = nullptr; }
-    if (path) g_trace = fopen(path, "w");
+    if (t_trace) { fclose(t_trace); t_trace = nullptr; }
+    if (path) t_trace = fopen(path, "w");
 }
 
 void SurfaceGenWrapper::setHeightProvider(HeightProvider* provider) {
-    g_heightProvider = provider;
+    t_heightProvider = provider;
 }
-HeightProvider* SurfaceGenWrapper::getHeightProvider() { return g_heightProvider; }
+HeightProvider* SurfaceGenWrapper::getHeightProvider() { return t_heightProvider; }
 
 void SurfaceGenWrapper::prefetchRegion(int x0, int z0, int w, int h) {
     VPROF_SCOPE(VZ_PREFETCH);
     prefetchGeneration = 0;
-    if (!g_heightProvider || !sg || w <= 0 || h <= 0) return;
-    prefetchGeneration = g_heightProvider->prefetch(sg, x0, z0, w, h);
+    if (!t_heightProvider || !sg || w <= 0 || h <= 0) return;
+    prefetchGeneration = t_heightProvider->prefetch(sg, x0, z0, w, h);
 }
 
 // Prédicat par défaut : retourne 1 (true) pour tout bloc non-air
@@ -91,25 +133,26 @@ int SurfaceGenWrapper::generateColumnFromY(int x, int z, BlockPredicate predicat
         predicate = defaultNotAirPredicate;
     }
     VPROF_SCOPE(VZ_HEIGHT_QUERY);
-    g_stats.columnQueries++;
-    if (x < g_stats.minX) g_stats.minX = x;
-    if (x > g_stats.maxX) g_stats.maxX = x;
-    if (z < g_stats.minZ) g_stats.minZ = z;
-    if (z > g_stats.maxZ) g_stats.maxZ = z;
+    Stats& st = localStats().s;
+    st.columnQueries++;
+    if (x < st.minX) st.minX = x;
+    if (x > st.maxX) st.maxX = x;
+    if (z < st.minZ) st.minZ = z;
+    if (z > st.maxZ) st.maxZ = z;
 
     auto t0 = std::chrono::steady_clock::now();
 
     // La zone pré-calculée ne couvre que le prédicat non-air, et seulement si
     // c'est bien CETTE instance qui l'a demandée.
     int h = -1;
-    if (notAir && prefetchGeneration != 0 && g_heightProvider &&
-        g_heightProvider->currentGeneration() == prefetchGeneration) {
-        h = g_heightProvider->lookup(x, z);
+    if (notAir && prefetchGeneration != 0 && t_heightProvider &&
+        t_heightProvider->currentGeneration() == prefetchGeneration) {
+        h = t_heightProvider->lookup(x, z);
     }
 
     if (h >= 0) {
-        g_stats.providerHits++;
-        if (g_verifyProvider) {
+        st.providerHits++;
+        if (t_verifyProvider) {
             int ref = generate_column_from_y(sg, x, z, predicate, sg);
             if (ref != h) {
                 std::cerr << "[verify] ECART a (" << x << ", " << z << ") : provider="
@@ -119,15 +162,15 @@ int SurfaceGenWrapper::generateColumnFromY(int x, int z, BlockPredicate predicat
             }
         }
     } else {
-        if (notAir && prefetchGeneration != 0) g_stats.providerMisses++;
+        if (notAir && prefetchGeneration != 0) st.providerMisses++;
         h = generate_column_from_y(sg, x, z, predicate, sg);
     }
 
-    g_stats.columnNanos += (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
+    st.columnNanos += (uint64_t)std::chrono::duration_cast<std::chrono::nanoseconds>(
         std::chrono::steady_clock::now() - t0).count();
 
-    if (g_trace)
-        fprintf(g_trace, "%d %d %d %d %d\n", x, z, h, sg->startSizeY, notAir ? 1 : 0);
+    if (t_trace)
+        fprintf(t_trace, "%d %d %d %d %d\n", x, z, h, sg->startSizeY, notAir ? 1 : 0);
 
     return h;
 }
@@ -144,12 +187,12 @@ int SurfaceGenWrapper::getHeightOnGround(int x, int z) {
     for (size_t i = 0; i < HEIGHT_CACHE_CAP; i++) {
         if (heightCache[i].valid && heightCache[i].x == x && heightCache[i].z == z) {
             heightCacheHits++;
-            g_stats.groundCacheHits++;
+            localStats().s.groundCacheHits++;
             return heightCache[i].height;
         }
     }
     heightCacheMisses++;
-    g_stats.groundQueries++;
+    localStats().s.groundQueries++;
 
     // Utiliser le prédicat WORLD_SURFACE_WG (comme en Java pour les villages)
     int height = generateColumnFromY(x, z, worldSurfaceWGPredicate);

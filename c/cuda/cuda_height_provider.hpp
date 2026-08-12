@@ -31,6 +31,16 @@ public:
         return heights_[(size_t)iz * w_ + ix];
     }
 
+    // Temps GPU cumulés (événements CUDA), pour distinguer le temps de calcul
+    // réel du surcoût de lancement/synchronisation côté hôte.
+    double gpuUploadMs()  const { return gpuUploadMs_; }
+    double gpuColumnsMs() const { return gpuColumnsMs_; }
+    double gpuHeightsMs() const { return gpuHeightsMs_; }
+    double gpuDownloadMs()const { return gpuDownloadMs_; }
+    double gpuTotalMs()   const {
+        return gpuUploadMs_ + gpuColumnsMs_ + gpuHeightsMs_ + gpuDownloadMs_;
+    }
+
     // Diagnostics cumulés
     int    prefetchCount()  const { return prefetchCount_; }
     double prefetchMs()     const { return prefetchMs_; }
@@ -40,6 +50,7 @@ public:
     void resetStats() {
         prefetchCount_ = 0; prefetchMs_ = 0.0; pointsComputed_ = 0;
         prefetchMinMs_ = 1e30; prefetchMaxMs_ = 0.0;
+        gpuUploadMs_ = gpuColumnsMs_ = gpuHeightsMs_ = gpuDownloadMs_ = 0.0;
     }
 
 private:
@@ -53,4 +64,6 @@ private:
     double    prefetchMinMs_  = 1e30;
     double    prefetchMaxMs_  = 0.0;
     long long pointsComputed_ = 0;
+    double    gpuUploadMs_ = 0.0, gpuColumnsMs_ = 0.0;
+    double    gpuHeightsMs_ = 0.0, gpuDownloadMs_ = 0.0;
 };

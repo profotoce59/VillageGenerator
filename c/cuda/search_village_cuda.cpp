@@ -14,8 +14,13 @@
  *     --regions N     grille de régions NxN pour les positions (défaut 10 -> 100 positions)
  *     --max-seeds N   arrêt après N structure seeds (défaut 0 = sans fin)
  *     --out FICHIER   journalise aussi dans ce fichier (ajout en fin)
- *     --index I --threads T   partitionnement pour lancer plusieurs processus
+ *     --threads N     threads de travail (défaut 4)
+ *     --shard I --shards S   partitionnement pour lancer plusieurs PROCESSUS
  *     --cpu           hauteurs sur CPU (pour comparer les débits)
+ *
+ * Chaque thread possède son propre CudaHeightProvider (contexte CUDA et zone
+ * pré-calculée non partageables) et sa propre tranche de structure seeds.
+ * Au-delà de ~6 threads le GPU sature : mesuré ~725 villages/s sur RTX 5070.
  */
 
 #include "cuda_height_provider.hpp"
@@ -34,7 +39,10 @@ extern "C" {
 #include <cstdlib>
 #include <cstring>
 #include <cstdarg>
+#include <atomic>
 #include <chrono>
+#include <mutex>
+#include <thread>
 #include <memory>
 #include <random>
 #include <string>
@@ -71,8 +79,10 @@ static uint64_t randomStructureSeed()
     return s & MASK48;
 }
 
+// Sérialise les écritures : plusieurs threads journalisent leurs trouvailles.
 struct Logger {
     FILE* f = nullptr;
+    std::mutex m;
     void open(const char* path) {
         if (!path) return;
         f = fopen(path, "a");
@@ -80,6 +90,7 @@ struct Logger {
     }
     void close() { if (f) { fclose(f); f = nullptr; } }
     void line(const char* fmt, ...) {
+        std::lock_guard<std::mutex> lk(m);
         va_list ap;
         va_start(ap, fmt); vprintf(fmt, ap); va_end(ap);
         if (f) { va_start(ap, fmt); vfprintf(f, fmt, ap); va_end(ap); fflush(f); }
@@ -96,8 +107,9 @@ int main(int argc, char** argv)
     int      regions    = 10;
     long     maxSeeds   = 0;        // 0 = sans fin
     const char* outPath = nullptr;
-    int      index      = 0;
-    int      threads    = 1;
+    int      shard      = 0;    // partitionnement inter-processus
+    int      shards     = 1;
+    int      threads    = 4;    // threads de travail dans CE processus
     bool     useCuda    = true;
 
     for (int i = 1; i < argc; i++) {
@@ -109,11 +121,13 @@ int main(int argc, char** argv)
         else if (!strcmp(argv[i], "--regions")   && i+1 < argc) regions  = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--max-seeds") && i+1 < argc) maxSeeds = strtol(argv[++i], nullptr, 10);
         else if (!strcmp(argv[i], "--out")       && i+1 < argc) outPath  = argv[++i];
-        else if (!strcmp(argv[i], "--index")     && i+1 < argc) index    = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--shard")     && i+1 < argc) shard    = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--shards")    && i+1 < argc) shards   = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--threads")   && i+1 < argc) threads  = atoi(argv[++i]);
         else { fprintf(stderr, "argument inconnu : %s\n", argv[i]); return 2; }
     }
     if (threads < 1) threads = 1;
+    if (shards  < 1) shards  = 1;
     if (!seedGiven) startSeed = randomStructureSeed();
 
     Logger log;
@@ -125,8 +139,9 @@ int main(int argc, char** argv)
     log.line("critere : >= %d forgerons", smithMin);
     if (pieceMin > 0) log.line("  ou >= %d pieces", pieceMin);
     log.line("\nworld seeds/structure : %d,  positions : %dx%d\n", worlds, regions, regions);
-    if (threads > 1) log.line("partition %d/%d\n", index, threads);
-    log.line("forgerons comptes : %d noms\n", NUM_WEAPONSMITHS);
+    log.line("threads : %d", threads);
+    if (shards > 1) log.line(",  shard %d/%d", shard, shards);
+    log.line("\nforgerons comptes : %d noms\n", NUM_WEAPONSMITHS);
 
     {
         const char* env = getenv("CUBIOMES_LAYER_CACHE");
@@ -137,104 +152,132 @@ int main(int argc, char** argv)
     }
     log.line("\n");
 
-    CudaHeightProvider provider;
+    // Prechauffage CUDA sur le thread principal : le premier appel du processus
+    // initialise le contexte du driver (~100 ms).
     if (useCuda) {
-        SurfaceGenWrapper::setHeightProvider(&provider);
+        CudaHeightProvider warmProvider;
+        SurfaceGenWrapper::setHeightProvider(&warmProvider);
         SurfaceGenWrapper warm(startSeed, 19);
         warm.setStartSizeYExact(120);
         warm.prefetchRegion(0, 0, 194, 194);
-        provider.resetStats();
+        SurfaceGenWrapper::setHeightProvider(nullptr);
     }
 
-    long     seedsDone  = 0;
-    uint64_t villages   = 0;
-    uint64_t hits       = 0;
+    std::atomic<long>     seedsDone{0};
+    std::atomic<uint64_t> villages{0};
+    std::atomic<uint64_t> hits{0};
+    std::atomic<bool>     stop{false};
     auto tStart = Clock::now();
-    auto tLast  = tStart;
-    uint64_t lastVillages = 0;
-    long     lastSeeds = 0;
 
-    for (uint64_t structureSeed = (startSeed + (uint64_t)index) & MASK48;
-         maxSeeds == 0 || seedsDone < maxSeeds;
-         structureSeed = (structureSeed + (uint64_t)threads) & MASK48)
-    {
-        std::vector<Pos> posList;
-        for (int rx = 0; rx < regions; rx++) {
-            for (int rz = 0; rz < regions; rz++) {
-                Pos p;
-                if (getStructurePos(Village, MC_1_16, structureSeed, rx, rz, &p)) {
-                    Pos c; c.x = p.x >> 4; c.z = p.z >> 4;
-                    posList.push_back(c);
+    // Chaque thread avance sur sa propre tranche de structure seeds, par pas de
+    // (threads * shards). Aucun etat partage hors des compteurs atomiques et du
+    // journal, qui a son verrou.
+    std::vector<std::thread> pool;
+    for (int t = 0; t < threads; t++) {
+        pool.emplace_back([&, t]() {
+            std::unique_ptr<CudaHeightProvider> provider;
+            if (useCuda) {
+                provider = std::make_unique<CudaHeightProvider>();
+                SurfaceGenWrapper::setHeightProvider(provider.get());
+            }
+
+            const uint64_t stride = (uint64_t)threads * (uint64_t)shards;
+            const uint64_t first  = (startSeed + (uint64_t)shard * (uint64_t)threads
+                                     + (uint64_t)t) & MASK48;
+
+            for (uint64_t structureSeed = first; !stop.load(std::memory_order_relaxed);
+                 structureSeed = (structureSeed + stride) & MASK48)
+            {
+                std::vector<Pos> posList;
+                for (int rx = 0; rx < regions; rx++) {
+                    for (int rz = 0; rz < regions; rz++) {
+                        Pos p;
+                        if (getStructurePos(Village, MC_1_16, structureSeed, rx, rz, &p)) {
+                            Pos c; c.x = p.x >> 4; c.z = p.z >> 4;
+                            posList.push_back(c);
+                        }
+                    }
                 }
+
+                for (int ws = 0; ws < worlds; ws++) {
+                    uint64_t worldSeed = structureSeed | ((uint64_t)ws << 48);
+
+                    Generator g;
+                    setupGenerator(&g, MC_1_16, 0);
+                    applySeed(&g, DIM_OVERWORLD, worldSeed);
+                    auto bs = std::make_unique<SimpleBiomeSource>(worldSeed);
+                    auto tg = std::make_unique<OverworldTerrainGenerator>(worldSeed, std::move(bs));
+
+                    for (const Pos& sp : posList) {
+                        if (!isViableStructurePos(Village, &g, sp.x << 4, sp.z << 4, 0)) continue;
+
+                        ChunkRand rand;
+                        VillageGenerator vg;
+                        if (!vg.generate(tg.get(), sp.x, sp.z, rand, nullptr, true, false)) continue;
+
+                        villages.fetch_add(1, std::memory_order_relaxed);
+                        const auto& pieces = vg.getPieces();
+                        int smiths = 0;
+                        for (const auto& p : pieces)
+                            if (isWeaponsmith(p->name)) smiths++;
+
+                        bool interesting = (smiths >= smithMin) ||
+                                           (pieceMin > 0 && (int)pieces.size() >= pieceMin);
+                        if (!interesting) continue;
+
+                        hits.fetch_add(1, std::memory_order_relaxed);
+                        std::string type = pieces.empty() ? "?" : pieces[0]->name;
+                        size_t slash = type.find('/');
+                        if (slash != std::string::npos) type = type.substr(0, slash);
+
+                        double el = std::chrono::duration<double>(Clock::now() - tStart).count();
+                        log.line("[%.0fs] TROUVE  structureSeed=%llu worldSeed=%llu "
+                                 "chunk=(%d,%d) bloc=(%d,%d) type=%s pieces=%zu forgerons=%d\n",
+                                 el,
+                                 (unsigned long long)structureSeed, (unsigned long long)worldSeed,
+                                 sp.x, sp.z, sp.x << 4, sp.z << 4,
+                                 type.c_str(), pieces.size(), smiths);
+                    }
+                    freeLayerCaches(&g);
+                }
+
+                long done = seedsDone.fetch_add(1, std::memory_order_relaxed) + 1;
+                if (maxSeeds != 0 && done >= maxSeeds)
+                    stop.store(true, std::memory_order_relaxed);
             }
-        }
+            SurfaceGenWrapper::setHeightProvider(nullptr);
+        });
+    }
 
-        for (int ws = 0; ws < worlds; ws++) {
-            uint64_t worldSeed = structureSeed | ((uint64_t)ws << 48);
-
-            Generator g;
-            setupGenerator(&g, MC_1_16, 0);
-            applySeed(&g, DIM_OVERWORLD, worldSeed);
-            auto bs = std::make_unique<SimpleBiomeSource>(worldSeed);
-            auto tg = std::make_unique<OverworldTerrainGenerator>(worldSeed, std::move(bs));
-
-            for (const Pos& sp : posList) {
-                if (!isViableStructurePos(Village, &g, sp.x << 4, sp.z << 4, 0)) continue;
-
-                ChunkRand rand;
-                VillageGenerator vg;
-                if (!vg.generate(tg.get(), sp.x, sp.z, rand, nullptr, true, false)) continue;
-
-                villages++;
-                const auto& pieces = vg.getPieces();
-                int smiths = 0;
-                for (const auto& p : pieces)
-                    if (isWeaponsmith(p->name)) smiths++;
-
-                bool interesting = (smiths >= smithMin) ||
-                                   (pieceMin > 0 && (int)pieces.size() >= pieceMin);
-                if (!interesting) continue;
-
-                hits++;
-                // Type de village : préfixe de la première pièce ("plains/...").
-                std::string type = pieces.empty() ? "?" : pieces[0]->name;
-                size_t slash = type.find('/');
-                if (slash != std::string::npos) type = type.substr(0, slash);
-
-                double el = std::chrono::duration<double>(Clock::now() - tStart).count();
-                log.line("[%.0fs] TROUVE  structureSeed=%llu worldSeed=%llu "
-                         "chunk=(%d,%d) bloc=(%d,%d) type=%s pieces=%zu forgerons=%d\n",
-                         el,
-                         (unsigned long long)structureSeed, (unsigned long long)worldSeed,
-                         sp.x, sp.z, sp.x << 4, sp.z << 4,
-                         type.c_str(), pieces.size(), smiths);
-                fflush(stdout);
-            }
-            freeLayerCaches(&g);
-        }
-
-        seedsDone++;
-
-        auto now = Clock::now();
-        if (std::chrono::duration<double>(now - tLast).count() >= 30.0) {
+    // Rapport d'avancement pendant que les threads travaillent.
+    {
+        long lastSeeds = 0; uint64_t lastVillages = 0;
+        auto tLast = tStart;
+        while (!stop.load()) {
+            for (int i = 0; i < 30 && !stop.load(); i++)
+                std::this_thread::sleep_for(std::chrono::seconds(1));
+            auto now = Clock::now();
             double el    = std::chrono::duration<double>(now - tStart).count();
             double delta = std::chrono::duration<double>(now - tLast).count();
-            printf("[%.0fs] seeds=%ld villages=%llu trouves=%llu | "
-                   "%.1f seeds/s  %.0f villages/s | seed courante=%llu\n",
-                   el, seedsDone, (unsigned long long)villages, (unsigned long long)hits,
-                   (seedsDone - lastSeeds) / delta,
-                   (villages - lastVillages) / delta,
-                   (unsigned long long)structureSeed);
-            fflush(stdout);
-            tLast = now;
-            lastSeeds = seedsDone;
-            lastVillages = villages;
+            long     s = seedsDone.load();
+            uint64_t v = villages.load();
+            if (delta > 0.5) {
+                printf("[%.0fs] seeds=%ld villages=%llu trouves=%llu | "
+                       "%.1f seeds/s  %.0f villages/s\n",
+                       el, s, (unsigned long long)v, (unsigned long long)hits.load(),
+                       (s - lastSeeds) / delta, (v - lastVillages) / delta);
+                fflush(stdout);
+            }
+            tLast = now; lastSeeds = s; lastVillages = v;
         }
     }
+
+    for (auto& th : pool) th.join();
 
     double el = std::chrono::duration<double>(Clock::now() - tStart).count();
     log.line("\nfin : %ld seeds, %llu villages, %llu trouves en %.0f s\n",
-             seedsDone, (unsigned long long)villages, (unsigned long long)hits, el);
+             seedsDone.load(), (unsigned long long)villages.load(),
+             (unsigned long long)hits.load(), el);
     log.close();
     SurfaceGenWrapper::setHeightProvider(nullptr);
     return 0;

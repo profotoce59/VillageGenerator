@@ -133,6 +133,45 @@ Les pools contiennent trois autres forgerons d'armes —
 — **volontairement exclus**. Ne pas les ajouter en croyant corriger un oubli.
 Les `tool_smith` et `armorer` ne comptent pas non plus.
 
+## Multi-threading et plafond GPU
+
+Un thread = une seed, avec **son propre `CudaHeightProvider`** (le contexte CUDA
+et la zone pré-calculée ne sont pas partageables). Aucune coordination
+inter-thread : `SurfaceGenWrapper::setHeightProvider` est `thread_local`.
+
+Mesuré sur RTX 5070 + Ryzen 7 9700X, 4383 villages :
+
+| threads | C | CUDA |
+|---|---|---|
+| 1 | 83/s | 285/s |
+| 4 | 284/s | 910/s |
+| 6 | — | 1068/s |
+| 8 | 449/s | 1117/s |
+
+Le GPU sature vers 6 threads. 4 threads en atteignent déjà ~85 %.
+
+### Pourquoi le batching de plusieurs villages par lancement n'aurait rien donné
+
+Les événements CUDA mesurent, à 1 thread : **1,19 ms de kernels contre 0,29 ms
+de surcoût hôte** par lancement. Le surcoût est minoritaire, et le
+multi-threading le recouvre déjà (un thread qui attend le GPU laisse le CPU aux
+autres). Le mur est le temps de calcul des kernels, pas le nombre de lancements.
+
+### Ce qui a effectivement relevé le plafond : le plancher de scan
+
+Avec le prédicat NOT_AIR, `get_block_from_noise` renvoie WATER dès que
+`y < seaLevel`. Le scan de hauteur touche donc **toujours** un bloc dans la
+cellule contenant `y = seaLevel-1` (soit la cellule 7 avec seaLevel=63 et des
+cellules de 8 blocs) et ne descend jamais plus bas. Les cellules 0 à 6 étaient
+calculées pour rien — environ la moitié du volume, `startSizeY` valant 11 à 15.
+
+`height_scan_floor()` calcule ce plancher et le kernel ne produit plus que la
+tranche `[minCellY, startSizeY)`. Avec STONE le scan peut aller jusqu'en bas,
+donc pas de plancher dans ce cas.
+
+Résultat : temps de kernels −41 %, débit **722 → 1068 villages/s** à 6 threads,
+à hauteurs strictement identiques.
+
 ## Avertissement : cache de layer cubiomes
 
 `cubiomes/layers.c` contient un cache maison (`mapCached`) qui **renvoie des

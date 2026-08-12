@@ -134,12 +134,15 @@ search_village_cuda: search_village_cuda.cpp cuda_height_provider.cpp cuda_heigh
 
 search: export CUBIOMES_LAYER_CACHE = 0
 search: search_village_cuda
-	./search_village_cuda.exe --smiths $(SMITHS) --out $(SEARCH_OUT)
+	./search_village_cuda.exe --smiths $(SMITHS) --threads $(THREADS) --out $(SEARCH_OUT)
 
 SMITHS     ?= 6
+THREADS    ?= 4
 SEARCH_OUT ?= village_finds.log
 
 BENCH_SEED  ?= 1
+BENCH_WORLDS ?= 520
+BENCH_THREADS ?= 4
 BENCH_COUNT ?= 10000
 
 # export cible-spécifique plutôt qu'un préfixe VAR=val : ça marche quel que
@@ -147,10 +150,10 @@ BENCH_COUNT ?= 10000
 bench-c bench-cuda run-village: export CUBIOMES_LAYER_CACHE = 0
 
 bench-c: bench_village
-	./bench_village.exe --c    --seed $(BENCH_SEED) --count $(BENCH_COUNT)
+	./bench_village.exe --c    --seed $(BENCH_SEED) --worlds $(BENCH_WORLDS) --threads $(BENCH_THREADS)
 
 bench-cuda: bench_village
-	./bench_village.exe --cuda --seed $(BENCH_SEED) --count $(BENCH_COUNT)
+	./bench_village.exe --cuda --seed $(BENCH_SEED) --worlds $(BENCH_WORLDS) --threads $(BENCH_THREADS)
 
 clean:
 	rm -f *.obj *.o *.lib *.exp *.exe *.pdb test_cuda test_village_cuda bench_village search_village_cuda profile_village
