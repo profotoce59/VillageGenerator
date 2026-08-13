@@ -61,6 +61,20 @@ struct SurfaceGen_s {
     // Utilise les valeurs de cubiomes: DIM_OVERWORLD (0), DIM_NETHER (-1), DIM_END (1)
     int dim;
 
+    // Reprise du scan quand le terrain dépasse la plage (comportement Java).
+    // Si le sommet de [0, startSizeY) est encore solide, c'est que le terrain
+    // monte plus haut : le Java élargit startSizeY de START_SIZE_STEP_CELLS et
+    // recommence, jusqu'à START_SIZE_MAX_TRIES fois. Sans ça, generate_column_from_y
+    // renvoie une hauteur plafonnée et les pièces se posent au mauvais endroit.
+    //
+    // ATTENTION : la reprise MUTE startSizeY de façon persistante et vide le
+    // cache de colonnes, exactement comme le Java. Les requêtes suivantes voient
+    // donc la nouvelle plage.
+    //
+    // Mettre à 0 pour obtenir la primitive sans reprise (utilisé par les tests
+    // qui comparent le kernel CUDA, lequel travaille à startSizeY fixe).
+    int enable_start_size_retry;
+
     // réglages slides
     NoiseSettings noiseSettings;
 

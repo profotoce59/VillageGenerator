@@ -89,6 +89,11 @@ int main(int argc, char** argv)
     SurfaceGen sg;
     memset(&sg, 0, sizeof(sg));
     setup_surface_gen_with_cubiomes(&sg, &ctx);
+    // Ce test compare la PRIMITIVE : le kernel CUDA travaille à startSizeY fixe
+    // et ne peut pas reprendre le scan. On désactive donc la reprise côté C pour
+    // comparer deux choses comparables. La reprise est testée ailleurs
+    // (test_village_seeds) au niveau du générateur de villages.
+    sg.enable_start_size_retry = 0;
     printf("SurfaceGen: chunk %dx%d, startSizeY=%d, noiseSizeY=%d, seaLevel=%d\n\n",
            sg.chunkWidth, sg.chunkHeight, sg.startSizeY, sg.noiseSizeY, sg.seaLevel);
 

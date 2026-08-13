@@ -458,9 +458,14 @@ public:
                         }
                     }
 
+                    VPROF_SCOPE(VZ_ATTACH_LOOP);
+                    VPROF_TALLY(VT_ATTACH_LOOPS);
+                    bool anyAttach = false;
                     for (const BlockJigsawInfo& blockJigsawInfo2 : list1) {
+                        VPROF_TALLY(VT_ATTACH_ENTRIES);
                         bool canAttach = blockJigsawInfo.canAttach15(blockJigsawInfo2);
                         if (!canAttach) continue;
+                        anyAttach = true;
 
                         BPos blockPos3 = blockJigsawInfo2.pos;
                         BPos blockPos4(relativeBlockPos.x - blockPos3.x,
@@ -512,6 +517,8 @@ public:
                         
                         goto next_jigsaw_block;
                     }
+                    // Sur goto, anyAttach vaut deja true : ne pas compter.
+                    if (!anyAttach) VPROF_TALLY(VT_ATTACH_EMPTY);
                 }
 
             }

@@ -142,6 +142,15 @@ coverage: analyze_coverage
 	./analyze_coverage.exe --count $(PROFILE_COUNT)
 
 
+
+# Cas de regression sur des villages precis (coherence avec le jeu).
+test_village_seeds: test_village_seeds.cpp cuda_height_provider.cpp cuda_height_provider.hpp                     $(VILLAGE_SRC) $(LIB) $(LIBCUBIOMES) $(HOST_OBJ)
+	$(NVCC) $(NVCC_FLAGS) -Xcompiler -wd4267 -Xcompiler -wd4244 		test_village_seeds.cpp cuda_height_provider.cpp $(VILLAGE_SRC) 		$(HOST_OBJ) $(LIB) $(LIBCUBIOMES) -o $@
+
+seeds: export CUBIOMES_LAYER_CACHE = 0
+seeds: test_village_seeds
+	./test_village_seeds.exe
+
 # Recherche de villages à forte densité de forgerons.
 search_village_cuda: search_village_cuda.cpp cuda_height_provider.cpp cuda_height_provider.hpp \
                      $(VILLAGE_SRC) $(LIB) $(LIBCUBIOMES) $(HOST_OBJ)
@@ -173,4 +182,4 @@ bench-cuda: bench_village
 	./bench_village.exe --cuda --seed $(BENCH_SEED) --worlds $(BENCH_WORLDS) --threads $(BENCH_THREADS)
 
 clean:
-	rm -f *.obj *.o *.lib *.exp *.exe *.pdb test_cuda test_village_cuda bench_village search_village_cuda profile_village analyze_coverage
+	rm -f *.obj *.o *.lib *.exp *.exe *.pdb test_cuda test_village_cuda bench_village search_village_cuda profile_village analyze_coverage test_village_seeds

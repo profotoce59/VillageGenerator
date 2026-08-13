@@ -78,6 +78,8 @@ void SurfaceGenWrapper::prefetchRegion(int x0, int z0, int w, int h) {
     prefetchGeneration = 0;
     if (!t_heightProvider || !sg || w <= 0 || h <= 0) return;
     prefetchGeneration = t_heightProvider->prefetch(sg, x0, z0, w, h);
+    prefetchStartSizeY = sg->startSizeY;
+    prefetchX0 = x0; prefetchZ0 = z0; prefetchW = w; prefetchH = h;
 }
 
 // Prédicat par défaut : retourne 1 (true) pour tout bloc non-air
@@ -142,10 +144,20 @@ int SurfaceGenWrapper::generateColumnFromY(int x, int z, BlockPredicate predicat
 
     auto t0 = std::chrono::steady_clock::now();
 
+    // Une reprise de scan a fait grandir startSizeY : la zone pré-calculée est
+    // périmée. La recalculer coûte un lancement GPU, bien moins que de traiter
+    // sur CPU toutes les requêtes restantes du village. startSizeY ne peut
+    // grandir que START_SIZE_MAX_TRIES fois, donc ça converge.
+    if (notAir && prefetchGeneration != 0 && sg->startSizeY != prefetchStartSizeY &&
+        prefetchW > 0 && prefetchH > 0) {
+        prefetchRegion(prefetchX0, prefetchZ0, prefetchW, prefetchH);
+    }
+
     // La zone pré-calculée ne couvre que le prédicat non-air, et seulement si
     // c'est bien CETTE instance qui l'a demandée.
     int h = -1;
     if (notAir && prefetchGeneration != 0 && t_heightProvider &&
+        sg->startSizeY == prefetchStartSizeY &&
         t_heightProvider->currentGeneration() == prefetchGeneration) {
         h = t_heightProvider->lookup(x, z);
     }

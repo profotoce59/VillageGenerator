@@ -84,6 +84,9 @@ uint64_t CudaHeightProvider::prefetch(SurfaceGen* sg, int x0, int z0, int w, int
     }
 
     x0_ = x0; z0_ = z0; w_ = w; h_ = h;
+    // Plafond du scan : une hauteur qui l'atteint signifie que le terrain
+    // dépasse la plage, cas que seul le chemin C sait traiter (reprise).
+    ceilingHeight_ = sg->startSizeY * sg->chunkHeight;
 
     // Nouvelle zone = nouveau village : on clôt le suivi du précédent.
     if (trackRadius_ > 0) {

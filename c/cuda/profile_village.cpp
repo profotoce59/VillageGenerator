@@ -14,6 +14,7 @@
 #include "../VillageGenerator.hpp"
 #include "../TerrainGenerator.hpp"
 #include "../BiomeSource.hpp"
+#include "../Biome.hpp"
 #include "../ChunkRand.hpp"
 #include "../SurfaceGenWrapper.hpp"
 #include "../Profiler.hpp"
@@ -26,7 +27,10 @@ extern "C" {
 #include <cstdlib>
 #include <cstring>
 #include <chrono>
+#include <atomic>
 #include <memory>
+#include <mutex>
+#include <thread>
 #include <vector>
 
 using Clock = std::chrono::steady_clock;
@@ -36,12 +40,16 @@ int main(int argc, char** argv)
     bool useCuda  = true;
     uint64_t seed = 1;
     long count    = 300;
+    int  nThreads = 1;
+    bool taigaOnly = false;   // reproduit la charge de la recherche filtree
 
     for (int i = 1; i < argc; i++) {
         if      (!strcmp(argv[i], "--cuda")) useCuda = true;
         else if (!strcmp(argv[i], "--c"))    useCuda = false;
         else if (!strcmp(argv[i], "--seed")  && i+1 < argc) seed  = strtoull(argv[++i], nullptr, 10);
         else if (!strcmp(argv[i], "--count") && i+1 < argc) count = strtol(argv[++i], nullptr, 10);
+        else if (!strcmp(argv[i], "--threads") && i+1 < argc) nThreads = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--taiga")) taigaOnly = true;
         else { fprintf(stderr, "argument inconnu : %s\n", argv[i]); return 2; }
     }
 
@@ -56,12 +64,14 @@ int main(int argc, char** argv)
                    " ça n'invalide pas le profil mais les villages générés ne sont pas justes)\n\n");
     }
 
-    CudaHeightProvider provider;
+    // Prechauffage CUDA hors mesure (init du contexte driver, ~100 ms).
     if (useCuda) {
-        SurfaceGenWrapper::setHeightProvider(&provider);
+        CudaHeightProvider warmProvider;
+        SurfaceGenWrapper::setHeightProvider(&warmProvider);
         SurfaceGenWrapper warm(seed, 19);
         warm.setStartSizeYExact(120);
         warm.prefetchRegion(0, 0, 194, 194);
+        SurfaceGenWrapper::setHeightProvider(nullptr);
     }
 
     std::vector<Pos> posList;
@@ -75,47 +85,70 @@ int main(int argc, char** argv)
         }
     }
 
+    // Le travail est un ENSEMBLE de world seeds (0..count-1), reparti par pas
+    // entre les threads : la charge est donc identique quel que soit nThreads,
+    // ce qui rend les profils comparables entre eux.
     vprofReset();
-    long villages = 0;
-    uint64_t pieces = 0;
+    std::atomic<long>     villages{0};
+    std::atomic<uint64_t> pieces{0};
     auto tStart = Clock::now();
 
-    for (uint64_t ws = 0; villages < count; ws++) {
-        uint64_t worldSeed = (seed & MASK48) | (ws << 48);
+    {
+        std::vector<std::thread> pool;
+        for (int t = 0; t < nThreads; t++) {
+            pool.emplace_back([&, t]() {
+                std::unique_ptr<CudaHeightProvider> provider;
+                if (useCuda) {
+                    provider = std::make_unique<CudaHeightProvider>();
+                    SurfaceGenWrapper::setHeightProvider(provider.get());
+                }
+                for (long ws = t; ws < count; ws += nThreads) {
+                    uint64_t worldSeed = (seed & MASK48) | ((uint64_t)ws << 48);
 
-        Generator g;
-        std::unique_ptr<OverworldTerrainGenerator> tg;
-        {
-            VPROF_SCOPE(VZ_WORLD_SETUP);
-            setupGenerator(&g, MC_1_16, 0);
-            applySeed(&g, DIM_OVERWORLD, worldSeed);
-            auto bs = std::make_unique<SimpleBiomeSource>(worldSeed);
-            tg = std::make_unique<OverworldTerrainGenerator>(worldSeed, std::move(bs));
+                    Generator g;
+                    std::unique_ptr<OverworldTerrainGenerator> tg;
+                    {
+                        VPROF_SCOPE(VZ_WORLD_SETUP);
+                        setupGenerator(&g, MC_1_16, 0);
+                        applySeed(&g, DIM_OVERWORLD, worldSeed);
+                        auto bs = std::make_unique<SimpleBiomeSource>(worldSeed);
+                        tg = std::make_unique<OverworldTerrainGenerator>(worldSeed, std::move(bs));
+                    }
+
+                    for (const Pos& sp : posList) {
+                        bool viable;
+                        { VPROF_SCOPE(VZ_VIABLE);
+                          viable = isViableStructurePos(Village, &g, sp.x << 4, sp.z << 4, 0); }
+                        if (!viable) continue;
+
+                        if (taigaOnly) {
+                            VPROF_SCOPE(VZ_BIOME_FILTER);
+                            Biome* b = tg->getBiomeSource()->getBiomeForNoiseGen(
+                                (sp.x << 2) + 2, 0, (sp.z << 2) + 2);
+                            if (!b || b->getType() != Biome::Type::TAIGA) continue;
+                        }
+
+                        ChunkRand rand;
+                        VillageGenerator vg;
+                        if (!vg.generate(tg.get(), sp.x, sp.z, rand, nullptr, true, false)) continue;
+                        villages.fetch_add(1, std::memory_order_relaxed);
+                        pieces.fetch_add(vg.getPieces().size(), std::memory_order_relaxed);
+                    }
+                    freeLayerCaches(&g);
+                }
+                SurfaceGenWrapper::setHeightProvider(nullptr);
+            });
         }
-
-        for (const Pos& sp : posList) {
-            if (villages >= count) break;
-
-            bool viable;
-            { VPROF_SCOPE(VZ_VIABLE);
-              viable = isViableStructurePos(Village, &g, sp.x << 4, sp.z << 4, 0); }
-            if (!viable) continue;
-
-            ChunkRand rand;
-            VillageGenerator vg;
-            if (!vg.generate(tg.get(), sp.x, sp.z, rand, nullptr, true, false)) continue;
-            villages++;
-            pieces += vg.getPieces().size();
-        }
-        freeLayerCaches(&g);
+        for (auto& th : pool) th.join();
     }
 
     double wallMs = std::chrono::duration<double, std::milli>(Clock::now() - tStart).count();
 
-    printf("villages : %ld   pièces : %llu   temps total : %.1f ms  (%.2f ms/village)\n",
-           villages, (unsigned long long)pieces, wallMs, villages ? wallMs / villages : 0.0);
-    vprofReport(wallMs);
+    const long v = villages.load();
+    printf("villages : %ld   pièces : %llu   temps total : %.1f ms  (%.0f villages/s)\n",
+           v, (unsigned long long)pieces.load(), wallMs,
+           wallMs > 0 ? v * 1000.0 / wallMs : 0.0);
+    vprofReport(wallMs, nThreads);
 
-    SurfaceGenWrapper::setHeightProvider(nullptr);
     return 0;
 }

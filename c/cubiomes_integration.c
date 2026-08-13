@@ -201,6 +201,9 @@ void setup_surface_gen_with_cubiomes(SurfaceGen *sg, CubiomesContext *ctx) {
     sg->densityOffset= -0.46875;
     sg->dim          = DIM_OVERWORLD;
     sg->cache_capacity = 16384;
+    // Comportement Java par défaut : élargir la plage et recommencer quand le
+    // terrain dépasse le sommet du scan.
+    sg->enable_start_size_retry = 1;
 
     // Slides identiques au Java : topSlide(-10, 3, 0), bottomSlide(-30, 0, 0)
     sg->noiseSettings.topSlideSettings.target  = -10.0;

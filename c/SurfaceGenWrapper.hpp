@@ -178,6 +178,13 @@ private:
     // évite de lire la zone d'un autre wrapper (même adresse réutilisée par
     // malloc, autre seed, autre startSizeY...).
     uint64_t prefetchGeneration = 0;
+    // startSizeY au moment du pré-calcul. Une reprise de scan le fait grandir
+    // et invalide la zone : les colonnes avaient été calculées pour l'ancienne
+    // plage, dont dépend la valeur du sommet.
+    int prefetchStartSizeY = -1;
+    // Zone mémorisée, pour pouvoir la recalculer après une reprise de scan
+    // plutôt que de retomber sur le C pour tout le reste du village.
+    int prefetchX0 = 0, prefetchZ0 = 0, prefetchW = 0, prefetchH = 0;
 
     // Prédicat par défaut : retourne true pour tout bloc non-air
     static int defaultNotAirPredicate(Block block, void* user);

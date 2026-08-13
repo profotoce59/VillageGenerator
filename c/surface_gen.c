@@ -272,12 +272,14 @@ const double* sample_noise_column_cached(SurfaceGen *sg, int x, int z)
     return cache_get(sg, key);
 }
 
+// Reprise du scan : constantes du Java (SurfaceGenerator2).
+#define START_SIZE_STEP_CELLS 2
+#define START_SIZE_MAX_TRIES  4
+
 // Implémentation de generateColumnfromY
 int generate_column_from_y(SurfaceGen *sg, int x, int z,
                            BlockPredicate predicate, void *user)
 {
-
-
     // Coordonnées de la cellule dans la grille
     int cellX = (int)floor((double)x / (double)sg->chunkWidth);
     int cellZ = (int)floor((double)z / (double)sg->chunkWidth);
@@ -289,7 +291,10 @@ int generate_column_from_y(SurfaceGen *sg, int x, int z,
     // Pourcentages de position
     double percentX = (double)posX / (double)sg->chunkWidth;
     double percentZ = (double)posZ / (double)sg->chunkWidth;
-    
+
+    int tries = 0;
+retry:
+    ;
     // Échantillonner les 4 colonnes de bruit aux coins
     const double *ds[4];
     ds[0] = sample_noise_column_cached(sg, cellX, cellZ);
@@ -311,6 +316,42 @@ int generate_column_from_y(SurfaceGen *sg, int x, int z,
         ds[1] = tmp_ds[1];
         ds[2] = tmp_ds[2];
         ds[3] = tmp_ds[3];
+    }
+
+    if (sg->startSizeY <= 0) {
+        if (tmp_ds[0]) for (int i = 0; i < 4; i++) free(tmp_ds[i]);
+        return 0;
+    }
+
+    // Si le sommet de la plage est encore solide, le terrain la dépasse :
+    // élargir et recommencer (comme le Java). Sinon on renverrait une hauteur
+    // plafonnée et la pièce se poserait au mauvais endroit.
+    if (sg->enable_start_size_retry) {
+        int topCellY = sg->startSizeY - 1;
+        int topPosY  = sg->chunkHeight - 1;
+        double percentTopY = (double)topPosY / (double)sg->chunkHeight;
+        double topNoise = lerp3(percentTopY, percentX, percentZ,
+                                ds[0][topCellY],     ds[0][topCellY + 1],
+                                ds[2][topCellY],     ds[2][topCellY + 1],
+                                ds[1][topCellY],     ds[1][topCellY + 1],
+                                ds[3][topCellY],     ds[3][topCellY + 1]);
+        int topY = topCellY * sg->chunkHeight + topPosY;
+        Block topBlock = get_block_from_noise(topNoise, topY, user);
+        int topMatches = (predicate != NULL && predicate(topBlock, user));
+
+        if (topMatches && tries < START_SIZE_MAX_TRIES && sg->startSizeY < sg->noiseSizeY) {
+            int newCell = sg->startSizeY + START_SIZE_STEP_CELLS;
+            if (newCell > sg->noiseSizeY) newCell = sg->noiseSizeY;
+            if (tmp_ds[0]) for (int i = 0; i < 4; i++) free(tmp_ds[i]);
+            if (newCell > sg->startSizeY) {
+                sg->startSizeY = newCell;
+                // Les colonnes en cache dépendent de startSizeY (l'indice
+                // startSizeY doit valoir 0) : les invalider, comme le Java.
+                free_surface_cache(sg);
+            }
+            tries++;
+            goto retry;
+        }
     }
 
     // Parcourir de haut en bas

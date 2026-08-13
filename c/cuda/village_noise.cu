@@ -24,6 +24,7 @@
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 
 // ============================================================================
 // Device helpers — ports of cubiomes rng.h / noise.c
@@ -500,6 +501,25 @@ static const int  HEIGHT_BLOCK = 128;
 static const size_t PERM_SURF_BYTES  = (size_t)GPU_OCT_SURF  * 257;
 static const size_t PERM_DEPTH_BYTES = (size_t)GPU_OCT_DEPTH * 257;
 
+// Mode d'attente de cudaEventSynchronize. Par defaut CUDA fait de l'attente
+// active (spin) pour minimiser la latence, ce qui BRULE un coeur pendant que le
+// GPU travaille. Avec autant de threads que de coeurs, ce coeur manque aux
+// autres. VILLAGE_CUDA_BLOCKING_SYNC=1 bascule en attente bloquante : le thread
+// s'endort et rend son coeur.
+// A appeler avant toute creation de contexte CUDA, d'ou le one-shot ici.
+static void apply_sync_mode_once()
+{
+    static bool done = false;
+    if (done) return;
+    done = true;
+    const char* env = getenv("VILLAGE_CUDA_BLOCKING_SYNC");
+    if (env && env[0] && env[0] != '0') {
+        cudaError_t e = cudaSetDeviceFlags(cudaDeviceScheduleBlockingSync);
+        if (e != cudaSuccess)
+            fprintf(stderr, "cudaSetDeviceFlags(BlockingSync) : %s\n", cudaGetErrorString(e));
+    }
+}
+
 CudaNoiseContext* cuda_noise_init(
     const GpuSurfaceNoise*     hostSN,
     const GpuSurfaceGenConfig* hostCfg,
@@ -510,6 +530,8 @@ CudaNoiseContext* cuda_noise_init(
         fprintf(stderr, "cuda_noise_init: invalid batch limits\n");
         return nullptr;
     }
+
+    apply_sync_mode_once();
 
     CudaNoiseContext* ctx = new CudaNoiseContext();
     memset(ctx, 0, sizeof(*ctx));

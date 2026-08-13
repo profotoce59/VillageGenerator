@@ -88,6 +88,34 @@
             "preLaunchTask": "build: search_village_cuda"
         },
         {
+            // Cas de régression sur des villages précis, signalés incohérents
+            // avec le jeu (8 forgerons rapportés, 4 constatés).
+            // Vérifie : pas de pièce en double, CPU == CUDA, et surtout aucune
+            // pièce posée sur une hauteur tronquée par le plafond de scan.
+            // Sort en code 1 si une anomalie est détectée.
+            "name": "Test cohérence villages (seeds de référence)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/c/cuda/test_village_seeds.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}/c/cuda",
+            "environment": [{ "name": "CUBIOMES_LAYER_CACHE", "value": "0" }],
+            "console": "integratedTerminal",
+            "preLaunchTask": "build: test_village_seeds"
+        },
+        {
+            // Même test sur un village au choix, avec le détail de toutes les pièces.
+            "name": "Test cohérence villages — worldSeed au choix",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/c/cuda/test_village_seeds.exe",
+            "args": ["${input:worldSeed}", "${input:chunkX}", "${input:chunkZ}", "--dump"],
+            "cwd": "${workspaceFolder}/c/cuda",
+            "environment": [{ "name": "CUBIOMES_LAYER_CACHE", "value": "0" }],
+            "console": "integratedTerminal",
+            "preLaunchTask": "build: test_village_seeds"
+        },
+        {
             "name": "Recherche villages — CUDA (seuil et threads au choix)",
             "type": "cppvsdbg",
             "request": "launch",
@@ -114,11 +142,29 @@
             "default": "6"
         },
         {
+            "id": "worldSeed",
+            "type": "promptString",
+            "description": "worldSeed du village à vérifier",
+            "default": "3735182320702388"
+        },
+        {
+            "id": "chunkX",
+            "type": "promptString",
+            "description": "chunk X",
+            "default": "6"
+        },
+        {
+            "id": "chunkZ",
+            "type": "promptString",
+            "description": "chunk Z",
+            "default": "23"
+        },
+        {
             "id": "nbThreads",
             "type": "pickString",
-            "description": "Combien de threads ? (le GPU sature vers 6)",
-            "options": ["1", "2", "4", "6", "8"],
-            "default": "4"
+            "description": "Combien de threads ? (le GPU sature vers 10)",
+            "options": ["1", "2", "4", "6", "8", "12"],
+            "default": "6"
         }
     ]
 }

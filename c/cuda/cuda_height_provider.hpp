@@ -15,6 +15,7 @@
 #include "village_noise_host.hpp"
 #include "../SurfaceGenWrapper.hpp"
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -28,8 +29,14 @@ public:
     {
         int ix = x - x0_, iz = z - z0_;
         if (ix < 0 || iz < 0 || ix >= w_ || iz >= h_) return -1;
+        int h = heights_[(size_t)iz * w_ + ix];
+        // Hauteur collée au plafond du scan : le terrain dépasse la plage, et
+        // le chemin C doit reprendre avec un startSizeY plus grand (ce que le
+        // kernel, à startSizeY fixe, ne sait pas faire). On renvoie -1 pour
+        // forcer le repli.
+        if (h >= ceilingHeight_) return -1;
         if (trackRadius_ > 0) noteUsage(x, z);
-        return heights_[(size_t)iz * w_ + ix];
+        return h;
     }
 
     // ---- étude de couverture (désactivée par défaut) -------------------
@@ -84,6 +91,7 @@ private:
     mutable long columnsComputed_   = 0;
     mutable bool villageHasUsage_   = false;
     int x0_ = 0, z0_ = 0, w_ = 0, h_ = 0;
+    int ceilingHeight_ = INT32_MAX;   // startSizeY * chunkHeight de la zone
     uint64_t generation_ = 0;
 
     int       prefetchCount_  = 0;
