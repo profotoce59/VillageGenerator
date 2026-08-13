@@ -248,6 +248,45 @@ repli sur l'échantillon de mesure.
 en dessous de ~80 blocs, les replis sur le CPU coûtent plus que les colonnes
 GPU économisées (rayon 64 → 1557/s, rayon 48 → 1162/s, contre 1669/s à 80).
 
+## Reprise de scan et extension incrémentale
+
+`generate_column_from_y` reprend le scan avec une plage plus haute quand le
+terrain dépasse le sommet (`START_SIZE_STEP_CELLS = 2`, `START_SIZE_MAX_TRIES = 4`),
+comme le Java. Voir [`../surface_gen.c`](../surface_gen.c).
+
+Le kernel travaille à `startSizeY` fixe et ne sait pas reprendre. Deux garde-fous :
+
+- le provider renvoie `-1` quand une hauteur touche le plafond du scan, ce qui
+  force le repli sur le chemin C, seul capable de reprendre
+- quand une reprise fait grandir `startSizeY`, la zone est **étendue** au lieu
+  d'être recalculée
+
+L'extension repose sur le fait que le bruit à un `y` donné **ne dépend pas** de
+`startSizeY` : seule la sentinelle (le zéro à l'indice `startSizeY`, qui reproduit
+le `calloc` du CPU) se déplace. On ne calcule donc que `[ancien, nouveau)`, et
+l'ancienne sentinelle est écrasée par sa vraie valeur.
+
+Cela a imposé de découpler l'indexation de la grille de `startSizeY` : le pas est
+désormais `allocStride` (fixe), pas `startSizeY + 1`.
+
+Mesuré sur 2157 villages — 32 % déclenchent une reprise, d'où 2845 lancements :
+
+| | recalcul complet | extension |
+|---|---|---|
+| kernels GPU (total) | 1,93 s | **1,35 s** (−30 %) |
+| par lancement | 0,680 ms | 0,475 ms |
+| débit 16 threads | 1596/s | **1832/s** (+15 %) |
+
+Deux pièges rencontrés, tous deux dans la clé qui autorise l'extension :
+
+La **seed** doit en faire partie. La recherche parcourt plusieurs world seeds sur
+les mêmes chunks, donc deux villages différents ont exactement la même zone en
+coordonnées monde — comparer la zone seule laisserait étendre la grille d'un
+autre monde.
+
+Le chemin d'extension **ne doit pas appeler `bind()`** : `bind()` peut recréer le
+contexte CUDA, et on étendrait alors une grille vide.
+
 ## Avertissement : cache de layer cubiomes
 
 `cubiomes/layers.c` contient un cache maison (`mapCached`) qui **renvoie des

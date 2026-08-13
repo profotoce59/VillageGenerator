@@ -269,8 +269,9 @@ __global__ void compute_noise_columns(
     const ColumnParams*        __restrict__ columns,
     const double*              __restrict__ randomOffsets,
     int numColumns,
-    int startSizeY,
-    int minCellY,               // cellules < minCellY jamais lues par le scan
+    int yFrom, int yTo,         // tranche de cellules a calculer
+    int sentinelIdx,            // indice ou ecrire le 0 de fin de colonne
+    int stride,                 // pas fixe, independant de startSizeY
     double* __restrict__ noiseGrid)
 {
     // Stage the permutation tables in shared memory: samplePerlin does 8
@@ -284,18 +285,18 @@ __global__ void compute_noise_columns(
     }
     __syncthreads();
 
-    // On ne calcule que la tranche [minCellY, startSizeY) : le scan de hauteur
-    // s'arrête à minCellY, tout ce qui est en dessous ne serait jamais lu.
-    const int nY = startSizeY - minCellY;
+    // On ne calcule que la tranche [yFrom, yTo). En calcul complet c'est
+    // [minCellY, startSizeY) ; en extension apres une reprise de scan, c'est
+    // seulement les quelques cellules qui manquent.
+    const int nY = yTo - yFrom;
     int tid = blockIdx.x * blockDim.x + threadIdx.x;
     int col = tid / nY;
-    int y   = minCellY + (tid - col * nY);
+    int y   = yFrom + (tid - col * nY);
 
     if (col >= numColumns)
         return;
 
     const ColumnParams cp = columns[col];
-    const int stride = startSizeY + 1;
     const double randomOffset = randomOffsets[col];
 
     double noise = d_sampleSurfaceNoise(sn, s_perm, cp.cellX, y, cp.cellZ);
@@ -319,12 +320,14 @@ __global__ void compute_noise_columns(
         noise = d_clampedLerpAB(cfg->botSlideTarget, noise, num);
     }
 
-    noiseGrid[col * stride + y] = noise;
+    noiseGrid[(size_t)col * stride + y] = noise;
 
-    // On the CPU the column buffer is calloc'd and only [0, startSizeY) is
-    // written, so index startSizeY reads back as 0.0. Reproduce that.
-    if (y == minCellY)
-        noiseGrid[col * stride + startSizeY] = 0.0;
+    // Cote CPU le buffer est calloc'd et seul [0, startSizeY) est ecrit, donc
+    // l'indice startSizeY relit 0.0. On reproduit ca. En extension, l'ancienne
+    // sentinelle est ecrasee par sa vraie valeur (elle est dans [yFrom, yTo))
+    // et la nouvelle est posee plus haut.
+    if (y == yFrom)
+        noiseGrid[(size_t)col * stride + sentinelIdx] = 0.0;
 }
 
 // ============================================================================
@@ -378,7 +381,7 @@ __device__ static inline int scan_column(
 __global__ void compute_heights_scattered(
     const GpuSurfaceGenConfig* __restrict__ cfg,
     const double* __restrict__ noiseGrid,
-    int startSizeY, int minCellY,
+    int startSizeY, int minCellY, int stride,
     const int* __restrict__ queryX,
     const int* __restrict__ queryZ,
     const int* __restrict__ cornerIndices,      // [numQueries * 4]
@@ -389,8 +392,6 @@ __global__ void compute_heights_scattered(
     int q = blockIdx.x * blockDim.x + threadIdx.x;
     if (q >= numQueries)
         return;
-
-    const int stride = startSizeY + 1;
 
     int c0 = cornerIndices[q * 4 + 0];
     int c1 = cornerIndices[q * 4 + 1];
@@ -419,7 +420,7 @@ __global__ void compute_heights_scattered(
 __global__ void compute_heightmap_rect(
     const GpuSurfaceGenConfig* __restrict__ cfg,
     const double* __restrict__ noiseGrid,
-    int startSizeY, int minCellY,
+    int startSizeY, int minCellY, int stride,
     int gridW, int cellX0, int cellZ0,
     int x0, int z0, int w, int h,
     int predicate,
@@ -437,7 +438,6 @@ __global__ void compute_heightmap_rect(
     int cellX = (int)floor((double)x / (double)cfg->chunkWidth);
     int cellZ = (int)floor((double)z / (double)cfg->chunkWidth);
 
-    const int stride = startSizeY + 1;
     int c0 = (cellZ - cellZ0) * gridW + (cellX - cellX0);
 
     int posX = ((x % cfg->chunkWidth) + cfg->chunkWidth) % cfg->chunkWidth;
@@ -635,37 +635,40 @@ static inline int height_scan_floor(const GpuSurfaceGenConfig* cfg, int predicat
 }
 
 // Launch kernel 1. Returns -1 on error.
+// uploadColumns/computeOffsets : false en extension, ou colonnes et
+// randomOffsets sont deja sur le device et inchanges.
 static int launch_columns(CudaNoiseContext* ctx, const ColumnParams* columns,
-                          int numColumns, int minCellY)
+                          int numColumns, int yFrom, int yTo, int sentinelIdx,
+                          bool uploadColumns, bool computeOffsets)
 {
-    const int startSizeY = ctx->hostCfg.startSizeY;
-
     CUDA_CHECK_INT(cudaEventRecord(ctx->evStart));
-    CUDA_CHECK_INT(cudaMemcpyAsync(ctx->d_columns, columns,
-        sizeof(ColumnParams) * (size_t)numColumns, cudaMemcpyHostToDevice));
+    if (uploadColumns) {
+        CUDA_CHECK_INT(cudaMemcpyAsync(ctx->d_columns, columns,
+            sizeof(ColumnParams) * (size_t)numColumns, cudaMemcpyHostToDevice));
+    }
     CUDA_CHECK_INT(cudaEventRecord(ctx->evUpload));
 
     // randomOffset: overworld only, exactly like sample_noise_column().
-    if (ctx->hostCfg.dim == 0 /* DIM_OVERWORLD */) {
+    if (computeOffsets && ctx->hostCfg.dim == 0 /* DIM_OVERWORLD */) {
         int roGrid = (numColumns + NOISE_BLOCK - 1) / NOISE_BLOCK;
         compute_random_offsets<<<roGrid, NOISE_BLOCK, PERM_DEPTH_BYTES>>>(
             ctx->d_sn, ctx->d_columns, numColumns, ctx->d_randomOffsets);
-    } else {
+    } else if (computeOffsets) {
         CUDA_CHECK_INT(cudaMemsetAsync(ctx->d_randomOffsets, 0,
             sizeof(double) * (size_t)numColumns));
     }
     CUDA_CHECK_INT(cudaGetLastError());
 
-    long long threads = (long long)numColumns * (startSizeY - minCellY);
+    long long threads = (long long)numColumns * (yTo - yFrom);
     if (threads <= 0) {
-        fprintf(stderr, "launch_columns: nothing to launch (numColumns=%d, startSizeY=%d)\n",
-                numColumns, startSizeY);
+        fprintf(stderr, "launch_columns: rien a lancer (numColumns=%d, yFrom=%d, yTo=%d)\n",
+                numColumns, yFrom, yTo);
         return -1;
     }
     int gridSize = (int)((threads + NOISE_BLOCK - 1) / NOISE_BLOCK);
     compute_noise_columns<<<gridSize, NOISE_BLOCK, PERM_SURF_BYTES>>>(
         ctx->d_sn, ctx->d_cfg, ctx->d_columns, ctx->d_randomOffsets,
-        numColumns, startSizeY, minCellY, ctx->d_noiseGrid);
+        numColumns, yFrom, yTo, sentinelIdx, ctx->allocStride, ctx->d_noiseGrid);
     CUDA_CHECK_INT(cudaGetLastError());
     CUDA_CHECK_INT(cudaEventRecord(ctx->evColumns));
     return 0;
@@ -705,7 +708,8 @@ int cuda_noise_batch_heights(
     }
 
     const int minCellY = height_scan_floor(&ctx->hostCfg, predicate);
-    if (launch_columns(ctx, columns, numColumns, minCellY) != 0) return -1;
+    if (launch_columns(ctx, columns, numColumns, minCellY, ctx->hostCfg.startSizeY,
+                       ctx->hostCfg.startSizeY, true, true) != 0) return -1;
 
     CUDA_CHECK_INT(cudaMemcpyAsync(ctx->d_queryX, queryX,
         sizeof(int) * (size_t)numQueries, cudaMemcpyHostToDevice));
@@ -716,7 +720,7 @@ int cuda_noise_batch_heights(
 
     int gridSize = (numQueries + HEIGHT_BLOCK - 1) / HEIGHT_BLOCK;
     compute_heights_scattered<<<gridSize, HEIGHT_BLOCK>>>(
-        ctx->d_cfg, ctx->d_noiseGrid, ctx->hostCfg.startSizeY, minCellY,
+        ctx->d_cfg, ctx->d_noiseGrid, ctx->hostCfg.startSizeY, minCellY, ctx->allocStride,
         ctx->d_queryX, ctx->d_queryZ, ctx->d_cornerIndices,
         numQueries, predicate, ctx->d_heights);
     CUDA_CHECK_INT(cudaGetLastError());
@@ -745,11 +749,49 @@ int cuda_noise_heightmap(
     }
 
     const int minCellY = height_scan_floor(&ctx->hostCfg, predicate);
-    if (launch_columns(ctx, columns, numColumns, minCellY) != 0) return -1;
+    if (launch_columns(ctx, columns, numColumns, minCellY, ctx->hostCfg.startSizeY,
+                       ctx->hostCfg.startSizeY, true, true) != 0) return -1;
 
     int gridSize = (numQueries + HEIGHT_BLOCK - 1) / HEIGHT_BLOCK;
     compute_heightmap_rect<<<gridSize, HEIGHT_BLOCK>>>(
-        ctx->d_cfg, ctx->d_noiseGrid, ctx->hostCfg.startSizeY, minCellY,
+        ctx->d_cfg, ctx->d_noiseGrid, ctx->hostCfg.startSizeY, minCellY, ctx->allocStride,
+        gridW, cellX0, cellZ0, x0, z0, w, h, predicate, ctx->d_heights);
+    CUDA_CHECK_INT(cudaGetLastError());
+
+    return finish_batch(ctx, heightsOut, numQueries);
+}
+int cuda_noise_heightmap_extend(
+    CudaNoiseContext* ctx,
+    int gridW, int gridH,
+    int cellX0, int cellZ0,
+    int x0, int z0, int w, int h,
+    int predicate,
+    int oldStartSizeY, int newStartSizeY,
+    int* heightsOut)
+{
+    if (!ctx) return -1;
+    if (gridW <= 0 || gridH <= 0 || w <= 0 || h <= 0) return -1;
+    if (newStartSizeY <= oldStartSizeY) return -1;
+    if (newStartSizeY + 1 > ctx->allocStride) return -1;   // ne tient pas
+
+    const int numColumns = gridW * gridH;
+    const int numQueries = w * h;
+    if (numColumns > ctx->maxColumns || numQueries > ctx->maxQueries) return -1;
+
+    ctx->hostCfg.startSizeY = newStartSizeY;
+
+    // Seule la tranche manquante est calculee. La sentinelle passe de
+    // oldStartSizeY (dont la vraie valeur est justement recalculee ici) a
+    // newStartSizeY. Colonnes et randomOffsets sont deja sur le device.
+    if (launch_columns(ctx, nullptr, numColumns,
+                       oldStartSizeY, newStartSizeY, newStartSizeY,
+                       false, false) != 0)
+        return -1;
+
+    const int minCellY = height_scan_floor(&ctx->hostCfg, predicate);
+    int gridSize = (numQueries + HEIGHT_BLOCK - 1) / HEIGHT_BLOCK;
+    compute_heightmap_rect<<<gridSize, HEIGHT_BLOCK>>>(
+        ctx->d_cfg, ctx->d_noiseGrid, newStartSizeY, minCellY, ctx->allocStride,
         gridW, cellX0, cellZ0, x0, z0, w, h, predicate, ctx->d_heights);
     CUDA_CHECK_INT(cudaGetLastError());
 

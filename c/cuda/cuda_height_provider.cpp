@@ -55,6 +55,35 @@ uint64_t CudaHeightProvider::prefetch(SurfaceGen* sg, int x0, int z0, int w, int
 
     auto t0 = std::chrono::steady_clock::now();
 
+    // --- Extension incrémentale ---
+    // Même village (même seed ET même zone) dont le startSizeY a grandi suite à
+    // une reprise de scan : les cellules déjà calculées restent valables, il ne
+    // manque que les quelques niveaux du haut.
+    //
+    // La seed fait partie de la clé, et ce n'est pas du zèle : la recherche
+    // parcourt plusieurs world seeds sur les MÊMES chunks, donc deux villages
+    // différents ont exactement la même zone en coordonnées monde.
+    //
+    // Ce chemin n'appelle surtout pas bind() : bind() peut recréer le contexte
+    // CUDA, et on étendrait alors une grille vide.
+    if (batcher_ && canExtend_ && lastSeed_ == ctx->seed &&
+        x0 == x0_ && z0 == z0_ && w == w_ && h == h_ &&
+        sg->startSizeY > extendFromStartSizeY_) {
+        heights_.resize((size_t)w * h);
+        if (batcher_->extendHeightmap(sg->startSizeY, HEIGHT_PRED_NOT_AIR,
+                                      heights_.data()) == 0) {
+            extendFromStartSizeY_ = sg->startSizeY;
+            ceilingHeight_ = sg->startSizeY * sg->chunkHeight;
+            extendCount_++;
+            prefetchCount_++;
+            prefetchMs_ += std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - t0).count();
+            return ++generation_;
+        }
+        // Échec (la nouvelle plage ne tient pas) : on repart sur un calcul complet.
+        canExtend_ = false;
+    }
+
     // L'Assembler crée un SurfaceGenWrapper (donc un CubiomesContext ET un
     // SurfaceGen, alloués séparément) par village. On réassocie systématiquement :
     // toute tentative de réutilisation conditionnelle est un piège, parce que
@@ -87,6 +116,9 @@ uint64_t CudaHeightProvider::prefetch(SurfaceGen* sg, int x0, int z0, int w, int
     // Plafond du scan : une hauteur qui l'atteint signifie que le terrain
     // dépasse la plage, cas que seul le chemin C sait traiter (reprise).
     ceilingHeight_ = sg->startSizeY * sg->chunkHeight;
+    canExtend_ = true;
+    extendFromStartSizeY_ = sg->startSizeY;
+    lastSeed_ = ctx->seed;
 
     // Nouvelle zone = nouveau village : on clôt le suivi du précédent.
     if (trackRadius_ > 0) {

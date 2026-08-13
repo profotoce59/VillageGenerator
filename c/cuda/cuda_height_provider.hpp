@@ -64,6 +64,7 @@ public:
 
     // Diagnostics cumulés
     int    prefetchCount()  const { return prefetchCount_; }
+    int    extendCount()    const { return extendCount_; }
     double prefetchMs()     const { return prefetchMs_; }
     double prefetchMinMs()  const { return prefetchCount_ ? prefetchMinMs_ : 0.0; }
     double prefetchMaxMs()  const { return prefetchMaxMs_; }
@@ -72,6 +73,7 @@ public:
         prefetchCount_ = 0; prefetchMs_ = 0.0; pointsComputed_ = 0;
         prefetchMinMs_ = 1e30; prefetchMaxMs_ = 0.0;
         gpuUploadMs_ = gpuColumnsMs_ = gpuHeightsMs_ = gpuDownloadMs_ = 0.0;
+        extendCount_ = 0;
     }
 
 private:
@@ -92,6 +94,12 @@ private:
     mutable bool villageHasUsage_   = false;
     int x0_ = 0, z0_ = 0, w_ = 0, h_ = 0;
     int ceilingHeight_ = INT32_MAX;   // startSizeY * chunkHeight de la zone
+    // Extension incrementale apres une reprise de scan : evite de recalculer
+    // toute la zone alors qu'il ne manque que quelques cellules en hauteur.
+    bool canExtend_ = false;
+    int  extendFromStartSizeY_ = -1;
+    int  extendCount_ = 0;
+    uint64_t lastSeed_ = 0;
     uint64_t generation_ = 0;
 
     int       prefetchCount_  = 0;

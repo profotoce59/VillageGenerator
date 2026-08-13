@@ -122,6 +122,24 @@ int cuda_noise_heightmap(
     int predicate,                      // HeightPredicate
     int* heightsOut);
 
+// Étend une heightmap rectangulaire déjà calculée à un startSizeY plus grand.
+//
+// Après une reprise de scan côté C, seules les cellules [oldStartSizeY,
+// newStartSizeY) manquent : les valeurs déjà en mémoire restent valables, le
+// bruit à un y donné ne dépendant pas de startSizeY. On ne recalcule donc que
+// la tranche manquante, puis on refait le scan de hauteur.
+//
+// Suppose que la zone, la grille de colonnes et la seed sont inchangées depuis
+// l'appel à cuda_noise_heightmap(). Renvoie 0 si OK.
+int cuda_noise_heightmap_extend(
+    CudaNoiseContext* ctx,
+    int gridW, int gridH,
+    int cellX0, int cellZ0,
+    int x0, int z0, int w, int h,
+    int predicate,
+    int oldStartSizeY, int newStartSizeY,
+    int* heightsOut);
+
 // Wall-clock time of the last launch, in milliseconds, split by phase.
 // Any pointer may be NULL.
 void cuda_noise_last_timings(const CudaNoiseContext* ctx,

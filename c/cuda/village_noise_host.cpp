@@ -225,9 +225,38 @@ int CudaHeightBatcher::heightmap(int x0, int z0, int w, int h,
     lastPrepMs_ = std::chrono::duration<double, std::milli>(t1 - t0).count();
     lastColumnCount_ = gridW * gridH;
 
-    return cuda_noise_heightmap(cudaCtx_, columns_.data(), gridW, gridH,
-                                cellX0, cellZ0, x0, z0, w, h,
-                                predicate, heightsOut);
+    int rc = cuda_noise_heightmap(cudaCtx_, columns_.data(), gridW, gridH,
+                                  cellX0, cellZ0, x0, z0, w, h,
+                                  predicate, heightsOut);
+    if (rc == 0) {
+        lastGridW_ = gridW; lastGridH_ = gridH;
+        lastCellX0_ = cellX0; lastCellZ0_ = cellZ0;
+        lastX0_ = x0; lastZ0_ = z0; lastW_ = w; lastH_ = h;
+        lastStartSizeY_ = sg_->startSizeY;
+    } else {
+        lastStartSizeY_ = -1;
+    }
+    return rc;
+}
+
+int CudaHeightBatcher::extendHeightmap(int newStartSizeY, int predicate, int* heightsOut)
+{
+    if (!cudaCtx_ || !heightsOut) return -1;
+    if (lastStartSizeY_ < 0 || lastW_ <= 0 || lastH_ <= 0) return -1;
+    if (newStartSizeY <= lastStartSizeY_) return -1;
+
+    int rc = cuda_noise_heightmap_extend(cudaCtx_, lastGridW_, lastGridH_,
+                                         lastCellX0_, lastCellZ0_,
+                                         lastX0_, lastZ0_, lastW_, lastH_,
+                                         predicate, lastStartSizeY_, newStartSizeY,
+                                         heightsOut);
+    if (rc != 0) { lastStartSizeY_ = -1; return -1; }
+
+    // gpuCfg_ suit l'etat du device, sinon prepareDevice() croirait la config
+    // changee et recreerait le contexte au prochain appel.
+    gpuCfg_.startSizeY = newStartSizeY;
+    lastStartSizeY_ = newStartSizeY;
+    return 0;
 }
 
 void CudaHeightBatcher::lastGpuTimings(float* upload, float* columnsKernel,

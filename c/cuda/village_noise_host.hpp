@@ -57,6 +57,15 @@ public:
     // Returns 0 on success.
     int heightmap(int x0, int z0, int w, int h, int predicate, int* heightsOut);
 
+    /**
+     * Étend la dernière heightmap à un startSizeY plus grand, après une reprise
+     * de scan côté C. Ne recalcule que les cellules manquantes et réutilise le
+     * travail biome déjà fait — d'où un coût très inférieur à un heightmap()
+     * complet. Renvoie 0 si OK, -1 s'il faut retomber sur un calcul complet
+     * (zone différente, ou nouvelle plage qui ne tient pas dans l'allocation).
+     */
+    int extendHeightmap(int newStartSizeY, int predicate, int* heightsOut);
+
     // Milliseconds spent building the ColumnParams grid on the CPU
     // (biome lookups) during the last heightmap()/execute() call.
     double lastColumnPrepMs() const { return lastPrepMs_; }
@@ -92,6 +101,11 @@ private:
     std::vector<int>          heights_;
     std::unordered_map<uint64_t, int> columnMap_;
     std::vector<double>       depthScratch_, scaleScratch_;
+
+    // Dernière zone rectangulaire calculée, pour pouvoir l'étendre.
+    int lastGridW_ = 0, lastGridH_ = 0, lastCellX0_ = 0, lastCellZ0_ = 0;
+    int lastX0_ = 0, lastZ0_ = 0, lastW_ = 0, lastH_ = 0;
+    int lastStartSizeY_ = -1;
 
     int    capColumns_ = 0;
     int    capQueries_ = 0;
