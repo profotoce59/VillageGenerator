@@ -202,7 +202,8 @@ int main(int argc, char** argv)
     }
 
     std::atomic<long>     seedsDone{0};
-    std::atomic<uint64_t> villages{0};
+    std::atomic<uint64_t> positions{0};   // positions viables examinees
+    std::atomic<uint64_t> villages{0};    // villages effectivement generes
     std::atomic<uint64_t> hits{0};
     std::atomic<bool>     stop{false};
     auto tStart = Clock::now();
@@ -248,6 +249,7 @@ int main(int argc, char** argv)
 
                     for (const Pos& sp : posList) {
                         if (!isViableStructurePos(Village, &g, sp.x << 4, sp.z << 4, 0)) continue;
+                        positions.fetch_add(1, std::memory_order_relaxed);
 
                         // Filtre de biome AVANT de générer. test_village_generation.cpp
                         // le teste après coup, ce qui assemble intégralement des
@@ -300,7 +302,7 @@ int main(int argc, char** argv)
 
     // Rapport d'avancement pendant que les threads travaillent.
     {
-        long lastSeeds = 0; uint64_t lastVillages = 0;
+        long lastSeeds = 0; uint64_t lastVillages = 0, lastPositions = 0;
         auto tLast = tStart;
         while (!stop.load()) {
             for (int i = 0; i < 30 && !stop.load(); i++)
@@ -310,22 +312,29 @@ int main(int argc, char** argv)
             double delta = std::chrono::duration<double>(now - tLast).count();
             long     s = seedsDone.load();
             uint64_t v = villages.load();
+            uint64_t q = positions.load();
             if (delta > 0.5) {
-                printf("[%.0fs] seeds=%ld villages=%llu trouves=%llu | "
-                       "%.1f seeds/s  %.0f villages/s\n",
-                       el, s, (unsigned long long)v, (unsigned long long)hits.load(),
-                       (s - lastSeeds) / delta, (v - lastVillages) / delta);
+                printf("[%.0fs] seeds=%ld positions=%llu villages=%llu trouves=%llu | "
+                       "%.1f seeds/s  %.0f pos/s  %.0f villages/s\n",
+                       el, s, (unsigned long long)q, (unsigned long long)v,
+                       (unsigned long long)hits.load(),
+                       (s - lastSeeds) / delta, (q - lastPositions) / delta,
+                       (v - lastVillages) / delta);
                 fflush(stdout);
             }
-            tLast = now; lastSeeds = s; lastVillages = v;
+            tLast = now; lastSeeds = s; lastVillages = v; lastPositions = q;
         }
     }
 
     for (auto& th : pool) th.join();
 
     double el = std::chrono::duration<double>(Clock::now() - tStart).count();
-    log.line("\nfin : %ld seeds, %llu villages, %llu trouves en %.0f s\n",
-             seedsDone.load(), (unsigned long long)villages.load(),
+    // "positions" = emplacements de village viables examinés ; "villages" = ceux
+    // effectivement générés. Avec un filtre de biome les deux diffèrent beaucoup,
+    // et c'est positions/s qui mesure l'avancement de la recherche.
+    log.line("\nfin : %ld seeds, %llu positions, %llu villages generes, %llu trouves en %.0f s\n",
+             seedsDone.load(), (unsigned long long)positions.load(),
+             (unsigned long long)villages.load(),
              (unsigned long long)hits.load(), el);
     log.close();
     SurfaceGenWrapper::setHeightProvider(nullptr);
