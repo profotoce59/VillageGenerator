@@ -15,6 +15,7 @@
  *     --max-seeds N   arrêt après N structure seeds (défaut 0 = sans fin)
  *     --out FICHIER   journalise aussi dans ce fichier (ajout en fin)
  *     --threads N     threads de travail (défaut 4)
+ *     --biome NOM     taiga (défaut) / plains / desert / savanna / snowy / any
  *     --shard I --shards S   partitionnement pour lancer plusieurs PROCESSUS
  *     --cpu           hauteurs sur CPU (pour comparer les débits)
  *
@@ -28,6 +29,7 @@
 #include "../VillageGenerator.hpp"
 #include "../TerrainGenerator.hpp"
 #include "../BiomeSource.hpp"
+#include "../Biome.hpp"
 #include "../ChunkRand.hpp"
 #include "../SurfaceGenWrapper.hpp"
 
@@ -71,6 +73,31 @@ static bool isWeaponsmith(const std::string& name)
     return false;
 }
 
+// Filtre de biome, comme le filterTaiga de test_village_generation.cpp.
+// -1 = pas de filtre.
+static int parseBiomeFilter(const char* name)
+{
+    if (!strcmp(name, "any"))     return -1;
+    if (!strcmp(name, "taiga"))   return (int)Biome::Type::TAIGA;
+    if (!strcmp(name, "plains"))  return (int)Biome::Type::PLAINS;
+    if (!strcmp(name, "desert"))  return (int)Biome::Type::DESERT;
+    if (!strcmp(name, "savanna")) return (int)Biome::Type::SAVANNA;
+    if (!strcmp(name, "snowy"))   return (int)Biome::Type::SNOWY_TUNDRA;
+    return -2;   // inconnu
+}
+
+static const char* biomeFilterName(int t)
+{
+    switch ((Biome::Type)t) {
+        case Biome::Type::TAIGA:        return "taiga";
+        case Biome::Type::PLAINS:       return "plains";
+        case Biome::Type::DESERT:       return "desert";
+        case Biome::Type::SAVANNA:      return "savanna";
+        case Biome::Type::SNOWY_TUNDRA: return "snowy";
+        default:                        return "?";
+    }
+}
+
 static uint64_t randomStructureSeed()
 {
     std::random_device rd;
@@ -111,6 +138,8 @@ int main(int argc, char** argv)
     int      shards     = 1;
     int      threads    = 4;    // threads de travail dans CE processus
     bool     useCuda    = true;
+    // Défaut taiga, comme filterTaiga = true dans test_village_generation.cpp.
+    int      biomeFilter = (int)Biome::Type::TAIGA;
 
     for (int i = 1; i < argc; i++) {
         if      (!strcmp(argv[i], "--cpu")) useCuda = false;
@@ -124,6 +153,14 @@ int main(int argc, char** argv)
         else if (!strcmp(argv[i], "--shard")     && i+1 < argc) shard    = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--shards")    && i+1 < argc) shards   = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--threads")   && i+1 < argc) threads  = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--biome")     && i+1 < argc) {
+            biomeFilter = parseBiomeFilter(argv[++i]);
+            if (biomeFilter == -2) {
+                fprintf(stderr, "biome inconnu : %s "
+                        "(taiga|plains|desert|savanna|snowy|any)\n", argv[i]);
+                return 2;
+            }
+        }
         else { fprintf(stderr, "argument inconnu : %s\n", argv[i]); return 2; }
     }
     if (threads < 1) threads = 1;
@@ -141,7 +178,8 @@ int main(int argc, char** argv)
     log.line("\nworld seeds/structure : %d,  positions : %dx%d\n", worlds, regions, regions);
     log.line("threads : %d", threads);
     if (shards > 1) log.line(",  shard %d/%d", shard, shards);
-    log.line("\nforgerons comptes : %d noms\n", NUM_WEAPONSMITHS);
+    log.line("\nbiome : %s\n", biomeFilter < 0 ? "tous" : biomeFilterName(biomeFilter));
+    log.line("forgerons comptes : %d noms\n", NUM_WEAPONSMITHS);
 
     {
         const char* env = getenv("CUBIOMES_LAYER_CACHE");
@@ -210,6 +248,17 @@ int main(int argc, char** argv)
 
                     for (const Pos& sp : posList) {
                         if (!isViableStructurePos(Village, &g, sp.x << 4, sp.z << 4, 0)) continue;
+
+                        // Filtre de biome AVANT de générer. test_village_generation.cpp
+                        // le teste après coup, ce qui assemble intégralement des
+                        // villages pour les jeter ensuite. Le biome ne dépend que de
+                        // la position, donc le résultat est le même et on économise
+                        // la génération.
+                        if (biomeFilter >= 0) {
+                            Biome* b = tg->getBiomeSource()->getBiomeForNoiseGen(
+                                (sp.x << 2) + 2, 0, (sp.z << 2) + 2);
+                            if (!b || (int)b->getType() != biomeFilter) continue;
+                        }
 
                         ChunkRand rand;
                         VillageGenerator vg;

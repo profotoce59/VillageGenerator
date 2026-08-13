@@ -146,6 +146,19 @@ public:
     VillageGenerator();
     ~VillageGenerator();
 
+    /**
+     * Rayon (en blocs, autour du centre du village) de la zone de hauteurs
+     * pré-calculée sur GPU. 0 = toute la zone bornée du VoxelShape (défaut).
+     *
+     * Mesuré sur 399 villages : les requêtes ne lisent que ~229 colonnes alors
+     * qu'on en calcule ~2143, et 94,9 % d'entre elles tiennent dans un rayon de
+     * 64 blocs. Réduire le rayon échange du temps GPU (ressource saturée) contre
+     * quelques replis sur le chemin C (ressource abondante).
+     * Les hauteurs restent identiques : hors zone, on retombe simplement sur le C.
+     */
+    static void setPrefetchRadius(int blocks);
+    static int  getPrefetchRadius();
+
     bool generate(TerrainGenerator* generator, int chunkX, int chunkZ, ChunkRand& rand);
     bool generate(TerrainGenerator* generator, int chunkX, int chunkZ, ChunkRand& rand,
                  Biome* biomeWanted, bool useHeightMapOptimizer, bool towncenterOptimizer);

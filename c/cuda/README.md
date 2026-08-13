@@ -157,6 +157,32 @@ de surcoût hôte** par lancement. Le surcoût est minoritaire, et le
 multi-threading le recouvre déjà (un thread qui attend le GPU laisse le CPU aux
 autres). Le mur est le temps de calcul des kernels, pas le nombre de lancements.
 
+### Flux CUDA : un par thread, pas un pour tous
+
+Sans le flag `--default-stream per-thread`, **tous les threads partagent le flux
+CUDA par défaut** (legacy null stream) et leurs lancements sont exécutés l'un
+après l'autre sur le GPU, même s'ils viennent de threads différents. Nos
+lancements ne font qu'une centaine de blocs — très loin de remplir 48 SMs — donc
+la sérialisation laisse le GPU à moitié vide.
+
+Effet mesuré (A/B entrelacé, 3 passes chacun, pour absorber ~10 % de variance) :
+
+| threads | flux partagé | flux par thread |
+|---|---|---|
+| 1 | 289/s | 282/s |
+| 2 | 560/s | 565/s |
+| 4 | 995/s | 1028/s |
+| 6 | 1183/s | **1335/s** |
+| 8 | 1252/s | **1566/s** |
+
+Sans effet en dessous de 4 threads (le GPU n'est pas assez sollicité pour que la
+file compte), +25 % à 8.
+
+Conséquence pour la lecture des mesures : les compteurs d'événements CUDA du
+bench mesurent l'intervalle entre deux `cudaEventRecord` sur le flux du thread.
+En flux partagé ils incluaient l'attente derrière les autres threads, d'où les
+« 161 % d'occupation GPU » qui ne voulaient rien dire.
+
 ### Ce qui a effectivement relevé le plafond : le plancher de scan
 
 Avec le prédicat NOT_AIR, `get_block_from_noise` renvoie WATER dès que
@@ -171,6 +197,56 @@ donc pas de plancher dans ce cas.
 
 Résultat : temps de kernels −41 %, débit **722 → 1068 villages/s** à 6 threads,
 à hauteurs strictement identiques.
+
+## Étude de couverture : quelles colonnes servent vraiment
+
+```bash
+make -C c/cuda coverage
+```
+
+[`analyze_coverage.cpp`](analyze_coverage.cpp) enregistre, pour chaque village,
+les cellules de bruit réellement consultées autour du centre. Sur 399 villages :
+
+```
+colonnes calculées       : 2143 / village
+colonnes réellement lues :  229 / village      -> 9,3x de gaspillage
+
+rayon      blocs        % lectures  colonnes zone
+  8          32              54,0%            289
+ 12          48              81,4%            625
+ 16          64              94,9%           1089
+ 20          80              99,9%           1681
+ 24          96             100,0%           2401
+```
+
+La carte de densité est un disque qui s'estompe depuis le centre, sans forme
+exploitable (ni croix le long des rues, ni anisotropie). Seules 4 cellules
+servent à plus de 90 % des villages.
+
+### Pourquoi le découpage en tuiles à la demande est une fausse bonne idée
+
+Une tuile de 16x16 blocs = 4x4 cellules = 25 colonnes, soit ~150 threads GPU :
+**deux blocs**. Or un lancement coûte ~0,29 ms de surcoût hôte incompressible,
+pour ~10 µs de travail utile. Et ce surcoût est un blocage *synchrone* au milieu
+du jigsaw, que rien ne recouvre.
+
+Un village touchant ~35 tuiles paierait ~10 ms contre ~1 ms aujourd'hui —
+**dix fois pire**. La granularité d'un GPU est le gros lot, pas l'incrément.
+
+### Ce qui marche : rogner la zone
+
+Le vrai enseignement de l'étude est que la marge de 8 blocs au-delà des bounds
+ne servait à rien. Les bounds contiennent déjà toutes les pièces, et une requête
+qui sortirait retombe sur le chemin C **avec un résultat identique** — la marge
+n'achetait pas de justesse, seulement des colonnes.
+
+`PREFETCH_MARGIN` passe de 8 à 0 : −17 % de colonnes, **+7 % de débit**, zéro
+repli sur l'échantillon de mesure.
+
+`VillageGenerator::setPrefetchRadius(blocs)` permet de rogner davantage
+(`--prefetch-radius` sur le bench). Le balayage montre que ça ne paie pas :
+en dessous de ~80 blocs, les replis sur le CPU coûtent plus que les colonnes
+GPU économisées (rayon 64 → 1557/s, rayon 48 → 1162/s, contre 1669/s à 80).
 
 ## Avertissement : cache de layer cubiomes
 

@@ -26,7 +26,12 @@ PARENT_DIR    := ..
 # -fmad=false is REQUIRED for bit-exactness: without it nvcc contracts
 # `from + part * (to - from)` into an FMA and the interpolated noise drifts
 # from the CPU result, which flips heights at cell boundaries.
-NVCC_FLAGS    := -O3 -std=c++17 -fmad=false \
+# --default-stream per-thread : sans ce flag, TOUS les threads partagent le flux
+# CUDA par défaut (legacy null stream) et leurs lancements sont sérialisés sur le
+# GPU. Avec, chaque thread a son propre flux implicite et les kernels peuvent
+# réellement se recouvrir — nos lancements ne font qu'une centaine de blocs, très
+# loin de remplir les 48 SMs à eux seuls.
+NVCC_FLAGS    := -O3 -std=c++17 -fmad=false --default-stream per-thread \
                  -arch=$(GPU_ARCH) \
                  -ccbin "$(MSVC_BIN)" \
                  -I$(CUBIOMES_DIR) -I$(PARENT_DIR)
@@ -125,6 +130,18 @@ profile-c: profile_village
 
 PROFILE_COUNT ?= 300
 
+# Etude de couverture : quelles colonnes un village consomme reellement.
+analyze_coverage: analyze_coverage.cpp cuda_height_provider.cpp cuda_height_provider.hpp \
+                  $(VILLAGE_SRC) $(LIB) $(LIBCUBIOMES) $(HOST_OBJ)
+	$(NVCC) $(NVCC_FLAGS) -Xcompiler -wd4267 -Xcompiler -wd4244 \
+		analyze_coverage.cpp cuda_height_provider.cpp $(VILLAGE_SRC) \
+		$(HOST_OBJ) $(LIB) $(LIBCUBIOMES) -o $@
+
+coverage: export CUBIOMES_LAYER_CACHE = 0
+coverage: analyze_coverage
+	./analyze_coverage.exe --count $(PROFILE_COUNT)
+
+
 # Recherche de villages à forte densité de forgerons.
 search_village_cuda: search_village_cuda.cpp cuda_height_provider.cpp cuda_height_provider.hpp \
                      $(VILLAGE_SRC) $(LIB) $(LIBCUBIOMES) $(HOST_OBJ)
@@ -156,4 +173,4 @@ bench-cuda: bench_village
 	./bench_village.exe --cuda --seed $(BENCH_SEED) --worlds $(BENCH_WORLDS) --threads $(BENCH_THREADS)
 
 clean:
-	rm -f *.obj *.o *.lib *.exp *.exe *.pdb test_cuda test_village_cuda bench_village search_village_cuda profile_village
+	rm -f *.obj *.o *.lib *.exp *.exe *.pdb test_cuda test_village_cuda bench_village search_village_cuda profile_village analyze_coverage

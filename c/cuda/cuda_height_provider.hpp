@@ -28,8 +28,22 @@ public:
     {
         int ix = x - x0_, iz = z - z0_;
         if (ix < 0 || iz < 0 || ix >= w_ || iz >= h_) return -1;
+        if (trackRadius_ > 0) noteUsage(x, z);
         return heights_[(size_t)iz * w_ + ix];
     }
+
+    // ---- étude de couverture (désactivée par défaut) -------------------
+    // Enregistre quelles cellules de bruit sont réellement consultées autour du
+    // centre du village, pour savoir si une zone plus petite ou d'une autre
+    // forme suffirait. Coût : une branche par lookup quand c'est éteint.
+    void enableUsageTracking(int radiusCells);
+    int  trackRadius()        const { return trackRadius_; }
+    long villagesTracked()    const { return villagesTracked_; }
+    long uniqueColumnsUsed()  const { return uniqueColumnsUsed_; }
+    long columnsComputed()    const { return columnsComputed_; }
+    // aggregate_[(dz+R)*(2R+1) + (dx+R)] = nombre de villages ayant utilisé
+    // la cellule à cet écart du centre.
+    const std::vector<uint32_t>& usageMap() const { return aggregate_; }
 
     // Temps GPU cumulés (événements CUDA), pour distinguer le temps de calcul
     // réel du surcoût de lancement/synchronisation côté hôte.
@@ -54,8 +68,21 @@ public:
     }
 
 private:
+    void noteUsage(int x, int z) const;
+    void flushVillageUsage() const;
+
     std::unique_ptr<CudaHeightBatcher> batcher_;
     std::vector<int> heights_;
+
+    // Suivi de couverture. mutable : lookup() est const par contrat d'interface.
+    int  trackRadius_ = 0;
+    int  cellCenterX_ = 0, cellCenterZ_ = 0;
+    mutable std::vector<uint8_t>  perVillage_;
+    mutable std::vector<uint32_t> aggregate_;
+    mutable long villagesTracked_   = 0;
+    mutable long uniqueColumnsUsed_ = 0;
+    mutable long columnsComputed_   = 0;
+    mutable bool villageHasUsage_   = false;
     int x0_ = 0, z0_ = 0, w_ = 0, h_ = 0;
     uint64_t generation_ = 0;
 

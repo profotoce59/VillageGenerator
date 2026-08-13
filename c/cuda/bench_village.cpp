@@ -74,6 +74,8 @@ int main(int argc, char** argv)
         else if (!strcmp(argv[i], "--seed")    && i + 1 < argc) seed     = strtoull(argv[++i], nullptr, 10);
         else if (!strcmp(argv[i], "--worlds")  && i + 1 < argc) worlds   = strtol(argv[++i], nullptr, 10);
         else if (!strcmp(argv[i], "--threads") && i + 1 < argc) nThreads = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "--prefetch-radius") && i + 1 < argc)
+            VillageGenerator::setPrefetchRadius(atoi(argv[++i]));
         else { fprintf(stderr, "argument inconnu : %s\n", argv[i]); return 2; }
     }
     if (nThreads < 1) nThreads = 1;
@@ -223,6 +225,10 @@ int main(int argc, char** argv)
     printf("  débit                 : %.0f villages/s\n",
            totalMs > 0 ? tot.villages * 1000.0 / totalMs : 0.0);
     printf("  hauteurs (cumul threads) : %.2f s de temps CPU\n", st.columnNanos / 1e9);
+    if (st.providerHits + st.providerMisses > 0)
+        printf("  requêtes servies par GPU : %llu, replis sur le C : %llu (%.1f %%)\n",
+               (unsigned long long)st.providerHits, (unsigned long long)st.providerMisses,
+               100.0 * st.providerMisses / (st.providerHits + st.providerMisses));
     if (useCuda && tot.prefetchCount > 0) {
         // Le GPU est un unique matériel partagé : comparer le temps de kernels
         // cumulé au temps mural donne son taux d'occupation réel. S'il est bas
