@@ -104,7 +104,6 @@ public class VillageGenerator extends Generator {
         // create the first piece (always rigid)
         Piece piece = new Piece(template, bPos, box, rotation, PlacementBehaviour.RIGID,0);
         piece.move(0, y - centerY, 0);
-        piece.setBoundsTop(y + 80);
         BlockBox fullBox = new BlockBox(centerX - 80, y - 80, centerZ - 80, centerX + 80 + 1, y + 80 + 1, centerZ + 80 + 1);
         Assembler assembler = new Assembler(6, generator,this.pieces,useHeightMapOptimizer,heightY);
         assembler.pieces.add(piece);
@@ -196,7 +195,6 @@ public class VillageGenerator extends Generator {
         public BPos pos;
         BlockBox box;
         public BlockRotation rotation;
-        int boundsTop;
         PlacementBehaviour placementBehaviour;
         private VoxelShape voxelShape;
         int depth;
@@ -226,10 +224,6 @@ public class VillageGenerator extends Generator {
         public void move(int x, int y, int z) {
             box.move(x, y, z);
             pos = pos.add(x, y, z);
-        }
-
-        public void setBoundsTop(int boundsTop) {
-            this.boundsTop = boundsTop;
         }
 
         public List<BlockJigsawInfo> getShuffledJigsawBlocks(VillageType villageType, BPos offset, JRand rand, MCVersion version) {//taking 20% need to opti
@@ -463,7 +457,7 @@ public class VillageGenerator extends Generator {
                     NoiseSettings.create(0.9999999814507745, 0.9999999814507745, 80.0, 160.0)
                             .addTopSlide(-10, 3, 0)
                             .addBottomSlide(-30, 0, 0),
-                    1.0D, -0.46875D, true,heightY+25);//13*8
+                    1.0D, -0.46875D, true,heightY+16);//13*8
             /* ------- //13 -> 13*8 = 104 si le village est plus que 104, il y aura une mauvaise gen, mais permet d'optimiser de beaucoup.*/
         }
 

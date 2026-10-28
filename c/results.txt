@@ -1,0 +1,22 @@
+C : 
+--- R├®sultat (C) ---
+  villages g├®n├®r├®s      : 10000  (46151 positions test├®es)
+  pi├¿ces                : 970599
+  temps total           : 171.60 s
+  par village           : 17.160 ms
+  d├®bit                 : 58 villages/s
+  co├╗t des hauteurs     : 99.34 s  (57.9 % du total)
+  checksum des pi├¿ces   : 623bd9478fb83a4b
+
+  (les deux backends doivent afficher le m├¬me checksum)
+
+  Cuda (hauteurs)
+  --- R├®sultat (CUDA) ---
+  villages g├®n├®r├®s      : 10000  (46151 positions test├®es)
+  pi├¿ces                : 970599
+  temps total           : 83.22 s
+  par village           : 8.322 ms
+  d├®bit                 : 120 villages/s
+  co├╗t des hauteurs     : 16.27 s  (19.5 % du total)
+     dont pr├®-calcul GPU : 14.19 s sur 10000 appels (1.42 ms chacun)
+  checksum des pi├¿ces   : 623bd9478fb83a4b

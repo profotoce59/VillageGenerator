@@ -2,14 +2,19 @@
 
 package profotoce59.thread;
 
+import com.seedfinding.mcbiome.source.BiomeSource;
 import com.seedfinding.mcbiome.source.OverworldBiomeSource;
+import com.seedfinding.mccore.block.Blocks;
 import com.seedfinding.mccore.rand.ChunkRand;
 import com.seedfinding.mccore.state.Dimension;
 import com.seedfinding.mccore.util.pos.CPos;
 import com.seedfinding.mccore.version.MCVersion;
 import com.seedfinding.mcfeature.structure.Village;
 import com.seedfinding.mcterrain.TerrainGenerator;
+import com.seedfinding.mcterrain.terrain.OverworldTerrainGenerator;
+import com.seedfinding.mcterrain.utils.NoiseSettings;
 import profotoce59.properties.VillageGenerator;
+import profotoce59.reecriture.SurfaceGenerator2;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -19,7 +24,7 @@ public class testVillageGen implements Runnable{
         private final int offset;
         private final int totalThreads;
         private  long startingPoint = new Random().nextLong();
-        private final MCVersion version = MCVersion.v1_15;
+        private final MCVersion version = MCVersion.v1_16;
 
         public testVillageGen(int offset, int totalThreads) {
             this.offset = offset;
@@ -32,17 +37,17 @@ public class testVillageGen implements Runnable{
 
 
             Village ville = new Village(version);
-            for (long structureSeed = startingPoint + offset; structureSeed < 1L << 48; structureSeed += this.totalThreads) {
+            //for (long structureSeed = startingPoint + offset; structureSeed < 1L << 48; structureSeed += this.totalThreads) {
 
 
-                structureSeed = 192731432848353L;
+                long structureSeed = 192731432848353L;
                 List<CPos> villePosList = new ArrayList<>();
                 for (int i=0;i<400;i++)for (int j=157;j<400;j++)
                 villePosList.add(ville.getInRegion(structureSeed, i, j, chunkRand));
                 //CPos villePosList = new CPos(5129,4756);
                 CheckWorldSeed(structureSeed, villePosList,version);
                 //return;
-            }
+            //}
         }
         /*public boolean checkCoffre(List<ItemStack> l) {
             boolean pi = false;
@@ -67,40 +72,39 @@ public class testVillageGen implements Runnable{
             structureSeed = structureSeed & 281474976710655L;
             int numGenerationSucceed = 0;
             VillageGenerator villeGen = new VillageGenerator(version);
-            for(long seed = 0;seed < 1<<3;seed++) {
+            for(long seed = 0;seed < 1<<2;seed++) {
                 long worldSeed = structureSeed | (seed<<48);
-                OverworldBiomeSource bs = new OverworldBiomeSource(version, worldSeed);
-                TerrainGenerator generator = TerrainGenerator.of(Dimension.OVERWORLD, bs);
+                BiomeSource biomeSource = BiomeSource.of(Dimension.OVERWORLD, version, worldSeed);
+                TerrainGenerator generator = TerrainGenerator.of(Dimension.OVERWORLD, biomeSource);
+                //if(!(biomeSource.getBiome(sPos)== Biomes.PLAINS ))continue;
                 int nb = 0;
                 for (CPos sPos : villePosList){
                     ChunkRand rand = new ChunkRand();
 
                     if(!villeGen.generate(generator, sPos.getX(),sPos.getZ(),rand,true))continue;
+                    villeGen.toString();
                     //System.out.println(nb++);
-                    int numBS = villeGen.getNumberOfBlackSmith();
-                    if(numBS>1){
+                    /*int numBS = villeGen.getNumberOfBlackSmith();
+                    if(numBS>8){
                         System.out.println("worldSeed : " + worldSeed + " structureSeed " + structureSeed+" "+numBS+" /tp "+sPos.getX()*16+" 80 "+sPos.getZ()*16);
                     }
                     else{
-                    int a = villeGen.getNumberOfHouses();
-                    if(a>36) {
-                        System.out.println("worldSeed : " + worldSeed + " " + a+" "+sPos.toString());
+                    int house_num = villeGen.getNumberOfHouses();
+                    if(house_num>45) {
+                        System.out.println("worldSeed : " + worldSeed + " " + house_num+" "+sPos.toString());
                     }
-                    }
+                }
                     /*meanBS = (numGenerationSucceed*meanBS+numBS)/(numGenerationSucceed+1);
                     if(numGenerationSucceed>7 &&  meanBS<1.5){
                         break;
 
                     }
                     numGenerationSucceed++;*/
-                }
+                //}
 
                 //else System.out.println(villeGen.getNumberOfBlackSmith());
-
-
-
+                }
             }
-
         }
     /*private void CheckWorldSeed(long structureSeed, CPos villePosC, ChunkRand chunkRand, MCVersion version, Village ville)
     {

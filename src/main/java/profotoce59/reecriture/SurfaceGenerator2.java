@@ -2,6 +2,7 @@ package profotoce59.reecriture;
 
 import com.seedfinding.mcbiome.source.BiomeSource;
 import com.seedfinding.mccore.block.Block;
+import com.seedfinding.mccore.block.Blocks;
 import com.seedfinding.mccore.rand.ChunkRand;
 import com.seedfinding.mccore.state.Dimension;
 import com.seedfinding.mccore.version.MCVersion;
@@ -19,6 +20,10 @@ import static com.seedfinding.mcnoise.utils.MathHelper.lerp3;
 import static com.seedfinding.mcnoise.utils.MathHelper.maintainPrecision;
 
 public class SurfaceGenerator2 extends SurfaceGenerator {
+    private static final int START_SIZE_MARGIN = 16;
+    private static final int START_SIZE_STEP_CELLS = 2; // 2 cells = 16 blocks
+    private static final int START_SIZE_MAX_TRIES = 4;
+    // Temporary test override: force start size in blocks (set to -1 to disable)
     private final int chunkHeight;
     private final int chunkWidth;
     private final int noiseSizeY;
@@ -36,7 +41,7 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
         super(biomeSource, worldHeight, horizontalNoiseResolution, verticalNoiseResolution, noiseSettings, densityFactor, densityOffset, useSimplexNoise);
         this.chunkHeight = verticalNoiseResolution * 4;
         this.chunkWidth = horizontalNoiseResolution * 4;
-        this.noiseSizeY = worldHeight / this.chunkHeight;
+        this.noiseSizeY = worldHeight / this.chunkHeight; //32
         this.noiseSettings = noiseSettings;
         this.random1 = new ChunkRand(biomeSource.getWorldSeed());
         this.minLimitPerlinNoise = new OctavePerlinNoiseSampler(this.random1, IntStream.rangeClosed(-15, 0));//for version 1.15+
@@ -44,14 +49,21 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
         this.mainPerlinNoise = new OctavePerlinNoiseSampler(this.random1, IntStream.rangeClosed(-7, 0));
         this.densityFactor = densityFactor;
         this.densityOffset = densityOffset;
-        this.startSizeY = Math.round(startSizeY/8);
+        this.startSizeY = Math.round(startSizeY/8); //8
     }
     public void setStartSizeY(int newStartSize){
 
-        if(Math.round(newStartSize/8)>this.startSizeY){
-            this.startSizeY = Math.round(newStartSize/8);
+        int newStartCell = Math.round(newStartSize/8);
+        if (newStartCell > this.noiseSizeY) {
+            newStartCell = this.noiseSizeY;
+        }
+        if(newStartCell > this.startSizeY){
+            this.startSizeY = newStartCell;
+            this.noiseColumnCache.clear();
         }
     }
+
+
     @Override
     public Dimension getDimension() {
         return null;
@@ -59,12 +71,12 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
 
     @Override
     public Block getDefaultBlock() {
-        return null;
+        return Blocks.STONE;
     }
 
     @Override
     public Block getDefaultFluid() {
-        return null;
+        return Blocks.WATER;
     }
 
     @Override
@@ -87,6 +99,19 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
             return ds;
         }
     }
+
+    public Block getBlockFromNoise(double noise, int y) {
+        Block block;
+        if(noise > 0.0D) {
+            block = this.getDefaultBlock();
+        } else if(y < this.getSeaLevel()) {
+            block = this.getDefaultFluid();
+        } else {
+            block = Blocks.AIR;
+        }
+
+        return block;
+    }
     public int generateColumnfromY(int x, int z, Predicate<Block> blockPredicate) {
         // those are the coordinates of the region in the grid chosen
         int cellX = Math.floorDiv(x, this.chunkWidth);
@@ -96,36 +121,67 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
         int posZ = Math.floorMod(z, this.chunkWidth);
         double percentX = (double)posX / (double)this.chunkWidth;
         double percentZ = (double)posZ / (double)this.chunkWidth;
-        double[][] ds = new double[][] {
-                this.sampleNoiseColumn(cellX, cellZ),
-                this.sampleNoiseColumn(cellX, cellZ + 1),
-                this.sampleNoiseColumn(cellX + 1, cellZ),
-                this.sampleNoiseColumn(cellX + 1, cellZ + 1)
-        };
+        int tries = 0;
+        while (true) {
+            double[][] ds = new double[][] {
+                    this.sampleNoiseColumn(cellX, cellZ),
+                    this.sampleNoiseColumn(cellX, cellZ + 1),
+                    this.sampleNoiseColumn(cellX + 1, cellZ),
+                    this.sampleNoiseColumn(cellX + 1, cellZ + 1)
+            };
 
-        for(int cellY = this.startSizeY - 1; cellY >= 0; --cellY) {
-            double xyz = ds[0][cellY];
-            double xyz1 = ds[1][cellY];
-            double x1yz = ds[2][cellY];
-            double x1yz1 = ds[3][cellY];
-            double xy1z = ds[0][cellY + 1];
-            double xy1z1 = ds[1][cellY + 1];
-            double x1y1z = ds[2][cellY + 1];
-            double x1y1z1 = ds[3][cellY + 1];
+            if (this.startSizeY <= 0) {
+                return 0;
+            }
 
-            for(int posY = this.chunkHeight - 1; posY >= 0; --posY) {
-                double percentY = (double)posY / (double)this.chunkHeight;
-                // this is not a bug, mojang does not respect order
-                double noise = lerp3(percentY, percentX, percentZ, xyz, xy1z, x1yz, x1y1z, xyz1, xy1z1, x1yz1, x1y1z1);
-                int y = cellY * this.chunkHeight + posY;
-                Block block = this.getBlockFromNoise(noise, y);
-                // we assume you actually have correctly filled the buffer
-                if(blockPredicate != null && blockPredicate.test(block)) {
-                    return y + 1;
+            // Check top of current range: if it is still non-air, we likely started too low.
+            int topCellY = this.startSizeY - 1;
+            double xyzTop = ds[0][topCellY];
+            double xyz1Top = ds[1][topCellY];
+            double x1yzTop = ds[2][topCellY];
+            double x1yz1Top = ds[3][topCellY];
+            double xy1zTop = ds[0][topCellY + 1];
+            double xy1z1Top = ds[1][topCellY + 1];
+            double x1y1zTop = ds[2][topCellY + 1];
+            double x1y1z1Top = ds[3][topCellY + 1];
+            int topPosY = this.chunkHeight - 1;
+            double percentTopY = (double)topPosY / (double)this.chunkHeight;
+            double topNoise = lerp3(percentTopY, percentX, percentZ,
+                    xyzTop, xy1zTop, x1yzTop, x1y1zTop, xyz1Top, xy1z1Top, x1yz1Top, x1y1z1Top);
+            int topY = topCellY * this.chunkHeight + topPosY;
+            Block topBlock = this.getBlockFromNoise(topNoise, topY);
+            boolean topMatches = blockPredicate != null && blockPredicate.test(topBlock);
+            if (topMatches && tries < START_SIZE_MAX_TRIES && this.startSizeY < this.noiseSizeY) {
+                int newStartSizeBlocks = (this.startSizeY + START_SIZE_STEP_CELLS) * this.chunkHeight;
+                this.setStartSizeY(newStartSizeBlocks);
+                tries++;
+                continue;
+            }
+
+            for(int cellY = this.startSizeY - 1; cellY >= 0; --cellY) {
+                double xyz = ds[0][cellY];
+                double xyz1 = ds[1][cellY];
+                double x1yz = ds[2][cellY];
+                double x1yz1 = ds[3][cellY];
+                double xy1z = ds[0][cellY + 1];
+                double xy1z1 = ds[1][cellY + 1];
+                double x1y1z = ds[2][cellY + 1];
+                double x1y1z1 = ds[3][cellY + 1];
+
+                for(int posY = this.chunkHeight - 1; posY >= 0; --posY) {
+                    double percentY = (double)posY / (double)this.chunkHeight;
+                    // this is not a bug, mojang does not respect order
+                    double noise = lerp3(percentY, percentX, percentZ, xyz, xy1z, x1yz, x1y1z, xyz1, xy1z1, x1yz1, x1y1z1);
+                    int y = cellY * this.chunkHeight + posY;
+                    Block block = this.getBlockFromNoise(noise, y);
+                    // we assume you actually have correctly filled the buffer
+                    if(blockPredicate != null && blockPredicate.test(block)) {
+                        return y + 1;
+                    }
                 }
             }
+            return 0;
         }
-        return 0;
     }
     protected void sampleNoiseColumn(double[] buffer, int x, int z) {
         double[] ds = this.getDepthAndScale(x, z);
@@ -137,35 +193,35 @@ public class SurfaceGenerator2 extends SurfaceGenerator {
             return;
         }
 
-        double sizeY = this.getMaxNoiseY();
-        double minY = this.getMinNoiseY();
+        double sizeY = this.getMaxNoiseY();//29
+        double minY = this.getMinNoiseY();//0
         double randomOffset = this.biomeSource.getDimension() == Dimension.OVERWORLD ? this.sampleNoise(x, z) : 0.0D;
-        for(int y = 6; y < startSizeY; ++y) {
+        for(int y = 7; y <= startSizeY; ++y) { //il va donc de la coord 48 à la coord ancienneSize+25
             // everything below is only for 1.14+
             double noise = this.sampleNoise(x, y, z);
             if(version.isNewerOrEqualTo(MCVersion.v1_16)) {
-                double fallOff = 1.0D - (double)y * 2.0D / (double)this.noiseSizeY + randomOffset;
-                fallOff = fallOff * densityFactor + densityOffset;
+                double fallOff = 1.0D - (double)y * 2.0D / (double)this.noiseSizeY + randomOffset; //noiseSizeY = 32
+                fallOff = fallOff * densityFactor + densityOffset; //densityOffset = 0.46875 density factor = 1
                 fallOff = (fallOff + depth) * scale;
                 noise = fallOff > 0.0 ? noise + fallOff * 4.0D : noise + fallOff;
-                if(this.noiseSettings.topSlideSettings.size > 0.0D) {
+                if(this.noiseSettings.topSlideSettings.size > 0.0D) {//toujours vrai (3) pour du overworld //target offset size : -10 0 3 //pour moi ça retourne toujours n0 donc inutile dans le cas ou on commence avec un y assez élevé
                     noise = MathHelper.clampedLerp(this.noiseSettings.topSlideSettings.target, noise, ((double)(this.noiseSizeY - y) - this.noiseSettings.topSlideSettings.offset) / this.noiseSettings.topSlideSettings.size);
                 }
-                if(this.noiseSettings.bottomSlideSettings.size > 0.0D) {
+                if(this.noiseSettings.bottomSlideSettings.size > 0.0D) {//toujours faux (0) pour du overworld
                     noise = MathHelper.clampedLerp(this.noiseSettings.bottomSlideSettings.target, noise, ((double)y - this.noiseSettings.bottomSlideSettings.offset) / this.noiseSettings.bottomSlideSettings.size);
                 }
             } else {
                 noise -= this.computeNoiseFalloff(depth, scale, y);
-                if((double)y > sizeY) {
+                if((double)y > sizeY) { //n'arrive jamais sauf à la height limit
                     noise = MathHelper.clampedLerp(noise, this.noiseSettings.topSlideSettings.target, (y - sizeY - this.noiseSettings.topSlideSettings.offset) / (double)this.noiseSettings.topSlideSettings.size);
-                } else if((double)y < minY) {
+                } else if((double)y < minY) { //même pas possible minY = 0
                     noise = MathHelper.clampedLerp(noise, this.noiseSettings.bottomSlideSettings.target, (minY - (double)y) / (minY - 1.0D));
                 }
             }
             buffer[y] = noise;
         }
     }
-    private double sampleNoise(int x, int y, int z) {
+    private double sampleNoise(int x, int y, int z) { //correspondance avec sampleSurfaceNoise
         double xzScale = NoiseSettings.COORDINATE_SCALE * noiseSettings.samplingSettings.xzScale;
         double yScale = NoiseSettings.HEIGHT_SCALE * noiseSettings.samplingSettings.yScale;
         double xzStep = xzScale / noiseSettings.samplingSettings.xzFactor;
