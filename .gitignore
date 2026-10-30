@@ -52,3 +52,4 @@ c/cuda/profile_village.exe
 .gradle/
 .idea/
 build/
+c/cuda/ncu_runs/

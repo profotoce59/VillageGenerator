@@ -308,10 +308,8 @@ L'extension repose sur le fait que le bruit à un `y` donné **ne dépend pas** 
 le `calloc` du CPU) se déplace. On ne calcule donc que `[ancien, nouveau)`, et
 l'ancienne sentinelle est écrasée par sa vraie valeur.
 
-Cela a imposé de découpler l'indexation de la grille de `startSizeY`. La grille
-est désormais y-major (`noiseGrid[y * numColumns + col]`, voir `TODO.md` §2.1) :
-le pas d'une ligne est le nombre de colonnes du lot, et `allocRows` borne le
-nombre de lignes. Ajouter des lignes en extension ne déplace donc rien.
+Cela a imposé de découpler l'indexation de la grille de `startSizeY` : le pas est
+désormais `allocStride` (fixe), pas `startSizeY + 1`.
 
 Mesuré sur 2157 villages — 32 % déclenchent une reprise, d'où 2845 lancements :
 
@@ -374,8 +372,8 @@ batcher.heightmap(x0, z0, 100, 100, HEIGHT_PRED_NOT_AIR, heights.data());
 |-------|----|----------|
 | `getBiome` → depth/scale par cellule | CPU | pile de layers cubiomes, séquentielle ; groupée en un seul `genBiomes()` pour toute la zone (`cubiomes_get_depth_and_scale_grid`) |
 | `randomOffset` (16 octaves `octdepth`) | GPU | bruit pur, 1 thread par colonne |
-| Bruit de surface (40 octaves) | GPU | 1 thread par (colonne, y) — c'est le gros du travail |
-| Interpolation trilinéaire + scan | GPU | 1 thread par point |
+| Bruit de surface (40 octaves) | GPU | 1 thread par (colonne, `NOISE_K` = 2 valeurs de y consécutives) — c'est le gros du travail. La partie x/z de chaque octave est partagée entre les 2 y : 4 % d'instructions en moins, +3 % de débit à 16 threads, mais un lancement isolé est 22 % plus lent (cf. `TODO.md` §2.3) |
+| Interpolation trilinéaire + scan | GPU | heightmap rectangulaire : 1 thread par (rangée z, cellule x), qui traite les 4 positions x de la cellule avec les mêmes 8 coins (cf. `TODO.md` §2.6) ; requêtes dispersées : 1 thread par point |
 
 ## Contraintes de build (non évidentes)
 

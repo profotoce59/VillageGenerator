@@ -41,13 +41,18 @@ shell MSYS/Git Bash.
 
 ```bash
 "$CUDA_HOME/bin/nvcc" --version        # ou nvcc --version
-ncu --version                          # Nsight Compute, souvent dans
-                                       # "C:/Program Files/NVIDIA Corporation/Nsight Compute <ver>/"
+# Sous Git Bash, seul ncu.bat existe (pas de ncu.exe dans le PATH) :
+NCU="$(ls -d "/c/Program Files/NVIDIA Corporation/Nsight Compute "* | sort -V | tail -1)/ncu.bat"
+"$NCU" --version
+"$NCU" --list-chips | tr ',' '\n' | grep -i gb20   # la puce du GPU doit y figurer
+NSYS="$(ls -d "/c/Program Files/NVIDIA Corporation/Nsight Systems "* | sort -V | tail -1)/target-windows-x64/nsys.exe"
 nvidia-smi
 ```
 
 - Pas de `nvcc` / `ncu` / GPU NVIDIA : **ne rien modifier**. Dire à
   l'utilisateur que la machine ne convient pas et s'arrêter.
+- `ncu` trop ancien pour le GPU (la puce manque dans `--list-chips`, ex. RTX
+  50xx = GB20x, il faut Nsight Compute 2025+) : même chose, le dire.
 - `ERR_NVGPUCTRPERM` au premier `ncu` : les compteurs GPU sont réservés aux
   admins. Il faut lancer le terminal en administrateur, ou activer *NVIDIA Control
   Panel → Developer → Manage GPU Performance Counters → Allow all users*. Le
@@ -79,11 +84,15 @@ La baseline est toujours **le code sans l'item**.
   puis le restaurer juste après le build (`git stash pop`), **même si le build
   échoue**.
 
-Construire, profiler et exporter :
+Construire, profiler et exporter. **Pas de `make clean`** : il efface aussi les
+outils non versionnés de l'utilisateur (`analyze_coverage.exe`,
+`refine_seeds.exe`, `stats_pieces.exe`…) et oblige à tout recompiler (~1 min).
+Seul `village_noise.cu` change d'un item à l'autre : supprimer son objet suffit,
+`make` refait la lib et les liens.
 
 ```bash
 cd c/cuda
-make clean && make test_cuda bench_village
+rm -f village_noise.obj && make test_cuda bench_village
 mkdir -p ncu_runs/<item>/baseline
 cp test_cuda.exe bench_village.exe ncu_runs/<item>/baseline/
 ```
@@ -123,50 +132,138 @@ mentionner dans la décision.
 Construire :
 
 ```bash
-make clean && make test_cuda bench_village test_village_cuda test_village_seeds
+rm -f village_noise.obj && make test_cuda bench_village test_village_cuda test_village_seeds
 ```
+
+`test_village_seeds.exe` est versionné : après les tests, le remettre dans son
+état commité (`git checkout -- c/cuda/test_village_seeds.exe`) pour ne pas
+polluer le diff.
 
 ## 4. Profil ncu (identique pour baseline et candidate)
 
 Toujours **les mêmes binaires d'entrée, arguments et options** des deux côtés.
 
+**Régime d'usage réel : 16 threads CPU** (`--threads 16`). Chaque thread CPU a
+son `CudaNoiseContext` et son flux, et leurs kernels tournent en même temps :
+le GPU est plein, et c'est le **travail total** qui compte, pas la latence
+d'un lancement isolé. Le juge est donc le débit à 16 threads (§4d).
+
+`ncu` et le nsys de 4b tournent à 1 thread CPU : `ncu` rejoue chaque kernel
+seul de toute façon, et le profil à 1 thread est lisible et stable. Ils servent
+à **expliquer** (instructions, divergence, coalescence, registres), pas à
+décider. Un kernel isolé sous-remplit le GPU (environ 111 blocs pour 48 SM) :
+un changement qui retire des threads peut ralentir le lancement isolé et
+pourtant accélérer le régime à 16 threads (cf. TODO 2.3).
+
+**Utiliser le script fourni**, ne pas en réécrire un. Il enchaîne 4a et 4b en
+environ 30 s par côté :
+
+```bash
+cd c/cuda
+bash ../../.claude/skills/cuda-optimize/profile.sh ncu_runs/<item>/baseline
+bash ../../.claude/skills/cuda-optimize/profile.sh ncu_runs/<item>/candidate
+```
+
+Si un profil dépasse 2 minutes, quelque chose est bloqué : souvent une commande
+qui attend stdin, comme un `cat > fichier` sans heredoc. Vérifier avec
+`tasklist | grep -iE "ncu|nsys|bench"` plutôt qu'attendre.
+
+Le détail des commandes est ci-dessous, pour référence ou pour un cas
+particulier, par exemple un balayage.
+
+### 4a. Profil allégé (par défaut)
+
+**Ne pas utiliser `--set full` par défaut.** Il rejoue chaque kernel plus de 40
+fois : environ 10 min par profil bench et des rapports de 17 à 50 Mo.
+`--metrics` ne collecte que les 18 métriques que lit `compare_ncu.py`, en
+**environ 10 s** et 0,75 Mo, avec les mêmes valeurs (moins de 0,2 % d'écart,
+vérifié le 2026-10-30).
+
+**Garder 200 lancements sur le bench.** Le coût vient des métriques, pas du
+nombre de lancements, et 60 lancements donnent un mélange de tailles différent
+(temps de 2b décalé de 19 %).
+
 ```bash
 D=ncu_runs/<item>/<baseline|candidate>
 export CUBIOMES_LAYER_CACHE=0
+M=$(python -I ../../.claude/skills/cuda-optimize/compare_ncu.py --metrics-list)
 
 # Micro : heightmap 200x200 déterministe -> kernels 0, 1, 2a, 2b
-ncu --set full --launch-skip 4 --launch-count 40 \
+"$NCU" --metrics "$M" --launch-skip 4 --launch-count 40 \
     --kernel-name regex:"compute_" \
     -o $D/micro -f  $D/test_cuda.exe 1 0 0 200 1
 
 # Réel : vrais villages, chemin d'extension inclus -> 1 thread, peu de mondes
-ncu --set full --launch-skip 50 --launch-count 200 \
+"$NCU" --metrics "$M" --launch-skip 50 --launch-count 200 \
     --kernel-name regex:"compute_" \
     -o $D/bench -f  $D/bench_village.exe --cuda --seed 1 --worlds 3 --threads 1 --quiet
 
+# ncu 2026+ ecrit des .ncu-repz (compresses)
 for r in micro bench; do
-  ncu --import $D/$r.ncu-rep --csv --page raw --print-units base > $D/$r.csv
+  "$NCU" --import $D/$r.ncu-repz --csv --page raw --print-units base > $D/$r.csv
 done
 ```
 
-Comparer :
+Comparer (`PYTHONIOENCODING=utf-8` évite une erreur d'encodage de la console
+Windows sur les accents et les ✓/✗) :
 
 ```bash
+export PYTHONIOENCODING=utf-8
 python -I ../../.claude/skills/cuda-optimize/compare_ncu.py \
     ncu_runs/<item>/baseline/micro.csv ncu_runs/<item>/candidate/micro.csv
 python -I ../../.claude/skills/cuda-optimize/compare_ncu.py \
     ncu_runs/<item>/baseline/bench.csv ncu_runs/<item>/candidate/bench.csv
 ```
 
-Pour creuser un kernel précis (sections *Memory Workload Analysis*, *Source
-Counters* avec les lignes fautives) :
-`ncu --import $D/micro.ncu-rep --page details --kernel-name compute_heightmap_rect`.
+Le **micro** ne fait que 6 à 8 lancements par kernel, de tailles différentes :
+son temps médian est indicatif. Pour les temps, se fier au **bench** et à 4b.
 
-Débit de bout en bout, qui reste le juge final (3 runs, prendre la médiane) :
+### 4b. Temps réels avec Nsight Systems (rapide, à faire aussi)
+
+`ncu` verrouille les fréquences et rejoue les kernels. Nsight Systems mesure
+les vrais temps, sans rejeu, et la mesure est très stable (moins de 0,2 %
+d'écart entre deux runs). Le faire 2 fois par côté :
 
 ```bash
-for i in 1 2 3; do ./ncu_runs/<item>/<side>/bench_village.exe --cuda --seed 1 --worlds 100 --threads 16 --quiet | grep "débit"; done
+for i in 1 2; do
+  (cd $D && "$NSYS" profile -t cuda -o "$(cygpath -w $PWD/nsys_$i)" -f true \
+      ./bench_village.exe --cuda --seed 1 --worlds 20 --threads 1 --quiet > /dev/null)
+  "$NSYS" stats -r cuda_gpu_kern_sum -f csv -q "$(cygpath -w $D/nsys_$i.nsys-rep)" \
+    | tail -n +2 | awk -F, '{split($9,n,"("); printf "%-26s n=%s avg=%.1fus med=%.1fus\n", n[1], $3, $4/1000, $5/1000}' | tr -d '"'
+done
 ```
+
+### 4c. Creuser un kernel précis (seulement si besoin)
+
+Quand le profil allégé ne suffit pas à expliquer un chiffre (*Memory Workload
+Analysis*, *Source Counters* avec les lignes fautives…), profiler **un seul
+kernel, sur quelques lancements**, avec le set complet :
+
+```bash
+"$NCU" --set full --kernel-name compute_noise_columns --launch-skip 10 --launch-count 3 \
+    -o $D/full_k1 -f  $D/bench_village.exe --cuda --seed 1 --worlds 3 --threads 1 --quiet
+"$NCU" --import $D/full_k1.ncu-repz --page details
+```
+
+### 4d. Débit de bout en bout à 16 threads, le juge final
+
+**Toujours le faire**, avec le script fourni. Il jette un run de chauffe par
+côté (le 1er run est souvent 5 % plus bas), puis fait 10 runs en alternant les
+côtés, et affiche les médianes et l'écart :
+
+```bash
+cd c/cuda
+bash ../../.claude/skills/cuda-optimize/throughput.sh ncu_runs/<item> baseline candidate
+# balayage : autant de côtés que de valeurs, ex. ncu_runs/2.5 64 32 128 256
+```
+
+Chaque run fait 400 mondes (environ 5 s, `WORLDS=…` pour changer) : compter
+environ 2 min pour 2 côtés. Avec 100 mondes (1,3 s par run), le bruit montait
+à ±7 % une fois le GPU accéléré (mesuré le 2026-10-30 sur 2.8) ; avec 400, la
+plupart des runs tiennent dans ±1 %. Si l'écart est entre 1 et 3 %, relancer
+une 2e série et regarder si le signe se confirme. Les débits à 400 mondes sont
+plus hauts qu'à 100 (démarrage mieux amorti) : ne comparer que des séries
+faites avec le même nombre de mondes.
 
 ## 5. Valider la correction (avant de regarder les perfs)
 
@@ -182,24 +279,34 @@ garder un gain de perf qui casse la bit-exactitude.
 
 ## 6. Décider
 
-Lire d'abord la section *GPU Speed Of Light* du kernel visé : est-il limité par
+Lire d'abord le *Speed Of Light* du kernel visé, c'est-à-dire les lignes
+`SM throughput %` et `mem throughput %` de `compare_ncu.py` : est-il limité par
 le calcul (SM throughput élevé) ou par la mémoire (Memory throughput élevé) ?
 Un gain mémoire sur un kernel limité par le calcul ne se verra pas dans le temps.
 C'est normal, et ça justifie de rejeter l'item.
 
-- **Garder `[x]`** : la métrique visée par l'item s'améliore dans le sens
-  attendu, le temps du kernel baisse de plus de 2 % (au-delà du bruit), aucun
-  autre kernel ne régresse de plus de 2 %, et le débit `bench_village` ne baisse pas.
-- **Rejeter `[-]`** : pas de gain, ou une régression. Annuler le code
-  (`git checkout -- …`). L'item reste documenté avec ses chiffres, pour ne pas
-  le retenter.
-- **Ambigu** (la métrique visée s'améliore mais le temps ne bouge pas) :
-  présenter les chiffres à l'utilisateur et le laisser trancher.
+Le critère principal est le **débit à 16 threads** (§4d), le régime d'usage
+réel. Les temps de kernel à 1 thread (ncu bench, nsys) expliquent, ils ne
+tranchent pas seuls.
+
+- **Garder `[x]`** : le débit à 16 threads monte de plus de 1 % en médiane, et
+  le signe se confirme sur 2 séries si l'écart est inférieur à 3 %. Les
+  métriques `ncu` doivent expliquer le gain (moins d'instructions, moins de
+  divergence, moins de lectures…). Un temps de kernel isolé qui monte n'est
+  pas bloquant, mais le noter dans la décision.
+- **Rejeter `[-]`** : le débit à 16 threads ne monte pas, ou baisse. Annuler le
+  code (`git checkout -- …`). L'item reste documenté avec ses chiffres, pour ne
+  pas le retenter.
+- **Pas de cas ambigu** : un débit dans le bruit, c'est un rejet, même si une
+  métrique `ncu` s'améliore nettement (cf. 2.4, 2.8). Ne jamais départager
+  sur le temps à 1 thread, ni lancer de mesure à 1 thread pour trancher : en
+  usage réel, l'utilisateur est toujours à 16 threads. Dans un balayage, une
+  égalité garde la valeur actuelle.
 
 Cas attendus, à ne pas confondre avec une régression :
 - *thread coarsening* : le ratio de threads actifs par warp baisse un peu (la
   divergence interne augmente), et l'occupancy peut baisser (plus de registres).
-  C'est acceptable si le temps baisse.
+  C'est acceptable si le débit à 16 threads monte.
 - moins de threads lancés : `sm__warps_active` peut baisser sans que ce soit
   un problème.
 

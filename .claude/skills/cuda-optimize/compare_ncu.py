@@ -4,14 +4,19 @@ compare_ncu.py — compare deux exports ncu (CSV, page raw) kernel par kernel.
 
 Usage :
     python -I compare_ncu.py baseline.csv candidate.csv [--kernel NAME ...]
+    python -I compare_ncu.py --metrics-list    # liste pour "ncu --metrics"
 
 Les CSV s'obtiennent avec :
-    ncu --import run.ncu-rep --csv --page raw --print-units base > run.csv
+    ncu --import run.ncu-repz --csv --page raw --print-units base > run.csv
+
+Les exports en locale française (virgule décimale, espace insécable entre les
+milliers) sont reconnus.
 
 Pour chaque kernel (nom court, sans la signature), prend la MÉDIANE de chaque
 métrique sur tous ses lancements, puis affiche avant / après / écart en %.
 """
 import csv
+import re
 import statistics
 import sys
 
@@ -39,10 +44,22 @@ METRICS = [
 ]
 
 
-def to_float(s):
-    s = (s or "").strip().replace(",", "").replace(" ", "").replace(" ", "")
+# Separateurs de milliers possibles selon la locale de Windows : espace,
+# espace insecable (0xA0, ou U+FFFD une fois mal decode), espace fine (U+202F).
+THOUSANDS_SPACES = re.compile("[ \t\u00a0\u202f\ufffd]")
+# Un nombre "0,25" ou "93,08" (pas exactement 3 chiffres apres la virgule) ne
+# peut etre qu'un separateur decimal : export ncu en locale francaise.
+DECIMAL_COMMA = re.compile(r"-?\d*,(\d{1,2}|\d{4,})")
+
+
+def to_float(s, decimal_comma=False):
+    s = THOUSANDS_SPACES.sub("", s or "")
     if not s or s.lower() in ("n/a", "nan"):
         return None
+    if decimal_comma:
+        s = s.replace(".", "").replace(",", ".")
+    else:
+        s = s.replace(",", "")
     try:
         return float(s)
     except ValueError:
@@ -66,13 +83,15 @@ def load(path):
     except ValueError:
         sys.exit(f"{path} : pas de colonne 'Kernel Name' (exporter avec --page raw --csv)")
 
+    data = [r for r in rows[1:] if len(r) == len(header) and r[kcol].strip()]
+    decimal_comma = any(DECIMAL_COMMA.fullmatch(THOUSANDS_SPACES.sub("", v))
+                        for r in data for v in r)
+
     out = {}
-    for r in rows[1:]:
-        if len(r) != len(header) or not r[kcol].strip():
-            continue  # ligne d'unités ou ligne cassée
+    for r in data:  # les lignes d'unités et les lignes cassées sont écartées
         per = out.setdefault(short_name(r[kcol]), {})
         for i, name in enumerate(header):
-            v = to_float(r[i])
+            v = to_float(r[i], decimal_comma)
             if v is not None:
                 per.setdefault(name, []).append(v)
     return out
@@ -90,6 +109,10 @@ def fmt(v):
 
 def main(argv):
     args = [a for a in argv[1:]]
+    if args == ["--metrics-list"]:
+        # Profil allégé : ncu ne collecte que ce que ce script affiche.
+        print(",".join(m for m, _, _ in METRICS))
+        return
     kernels_filter = []
     if "--kernel" in args:
         i = args.index("--kernel")

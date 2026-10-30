@@ -3,12 +3,12 @@
  *
  * Strategy:
  *   Kernel 1 (compute_noise_columns):
- *     One thread per (column, y).  Each thread runs the 40 Perlin octaves of
- *     sampleSurfaceNoise(cellX, y, cellZ), then the density/slide math, and
- *     writes one noise value.  The octave permutation tables are staged in
- *     shared memory once per block.
- *     Output: double noiseGrid[startSizeY + 1][numColumns]  (y-major, so that
- *     neighbouring columns are contiguous and kernel 2 reads coalesce)
+ *     One thread per (column, NOISE_K consecutive y).  Each thread runs the
+ *     40 Perlin octaves of sampleSurfaceNoise(cellX, y, cellZ) for its NOISE_K
+ *     values of y (the x/z part of each octave is shared), then the
+ *     density/slide math, and writes NOISE_K noise values.  The octave
+ *     permutation tables are staged in shared memory once per block.
+ *     Output: double noiseGrid[numColumns][startSizeY + 1]
  *
  *   Kernel 2 (compute_heights_scattered / compute_heightmap_rect):
  *     One thread per height query.  Reads the 4 corner columns from noiseGrid,
@@ -26,6 +26,12 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+
+// Kernel 1 : nombre de cellules y calculees par thread (thread coarsening,
+// TODO 2.3). La partie x/z de Perlin est partagee entre ces NOISE_K valeurs.
+#ifndef NOISE_K
+#define NOISE_K 2
+#endif
 
 // ============================================================================
 // Device helpers — ports of cubiomes rng.h / noise.c
@@ -68,28 +74,21 @@ __device__ static inline double d_clampedLerpAB(double a, double b, double t)
     return a + (b - a) * t;
 }
 
+// Version sans branche du switch de cubiomes (16 cas) :
+//   0:  a+b   1: -a+b   2:  a-b   3: -a-b   4:  a+c   5: -a+c   6:  a-c   7: -a-c
+//   8:  b+c   9: -b+c  10:  b-c  11: -b-c  12:  a+b  13: -b+c  14: -a+b  15: -b-c
+// Chaque cas vaut (+-u) + (+-v) avec u dans {a, b} et v dans {b, c}. L'index
+// est aleatoire d'un thread a l'autre : un switch ferait diverger le warp
+// (TODO 2.14). Bit-exact : la negation est exacte (signe du zero compris) et
+// IEEE 754 definit x - y comme x + (-y).
 __device__ static inline double d_indexedLerp(uint8_t idx, double a, double b, double c)
 {
-    switch (idx & 0xf)
-    {
-    case 0:  return  a + b;
-    case 1:  return -a + b;
-    case 2:  return  a - b;
-    case 3:  return -a - b;
-    case 4:  return  a + c;
-    case 5:  return -a + c;
-    case 6:  return  a - c;
-    case 7:  return -a - c;
-    case 8:  return  b + c;
-    case 9:  return -b + c;
-    case 10: return  b - c;
-    case 11: return -b - c;
-    case 12: return  a + b;
-    case 13: return -b + c;
-    case 14: return -a + b;
-    case 15: return -b - c;
-    }
-    return 0.0;
+    const unsigned i = idx & 0xf;
+    double u = ((0xAF00u >> i) & 1u) ? b : a;     // u = b pour 8-11, 13, 15
+    double v = ((0xAFF0u >> i) & 1u) ? c : b;     // v = c pour 4-11, 13, 15
+    u = ((0xEAAAu >> i) & 1u) ? -u : u;           // -u pour 1,3,5,7,9,11,13,14,15
+    v = ((0x8CCCu >> i) & 1u) ? -v : v;           // -v pour 2,3,6,7,10,11,15
+    return u + v;
 }
 
 // samplePerlin — port of cubiomes noise.c
@@ -161,53 +160,164 @@ __device__ static double d_samplePerlin(
     return d_lerp(t3, l1, l5);
 }
 
+// samplePerlin pour K valeurs de y d'une meme colonne (kernel 1).
+// Tout ce qui vient de x/z (d1, d3, h1, h3, t1, t3, idx[h1], idx[h1+1]) est
+// calcule une seule fois ; pour chaque k, les operations sont exactement
+// celles de d_samplePerlin, dans le meme ordre : bit-exact.
+template <int K>
+__device__ static inline void d_samplePerlinK(
+    const GpuPerlinParams* __restrict__ p,
+    const uint8_t* __restrict__ idx,
+    double d1, const double (&d2in)[K], double d3,
+    double yamp, const double (&ymin)[K],
+    double (&out)[K])
+{
+    d1 += p->a;
+    d3 += p->c;
+
+    double i1 = floor(d1);
+    double i3 = floor(d3);
+    d1 -= i1;
+    d3 -= i3;
+
+    const uint8_t h1 = (uint8_t)(int)i1;
+    const uint8_t h3 = (uint8_t)(int)i3;
+
+    const double t1 = d1*d1*d1 * (d1 * (d1*6.0-15.0) + 10.0);
+    const double t3 = d3*d3*d3 * (d3 * (d3*6.0-15.0) + 10.0);
+
+    const uint8_t p1a = idx[h1];
+    const uint8_t p1b = idx[h1+1];
+
+    #pragma unroll
+    for (int k = 0; k < K; k++) {
+        double d2 = d2in[k];
+        uint8_t h2;
+        double t2;
+
+        if (d2 == 0.0) {
+            d2 = p->d2;
+            h2 = (uint8_t)p->h2;
+            t2 = p->t2;
+        } else {
+            d2 += p->b;
+            double i2 = floor(d2);
+            d2 -= i2;
+            h2 = (uint8_t)(int)i2;
+            t2 = d2*d2*d2 * (d2 * (d2*6.0-15.0) + 10.0);
+        }
+
+        if (yamp) {
+            double yclamp = ymin[k] < d2 ? ymin[k] : d2;
+            d2 -= floor(yclamp / yamp) * yamp;
+        }
+
+        uint8_t a1 = p1a + h2;
+        uint8_t b1 = p1b + h2;
+
+        uint8_t a2 = idx[a1]   + h3;
+        uint8_t b2 = idx[b1]   + h3;
+        uint8_t a3 = idx[a1+1] + h3;
+        uint8_t b3 = idx[b1+1] + h3;
+
+        double l1 = d_indexedLerp(idx[a2],   d1,   d2,   d3);
+        double l2 = d_indexedLerp(idx[b2],   d1-1, d2,   d3);
+        double l3 = d_indexedLerp(idx[a3],   d1,   d2-1, d3);
+        double l4 = d_indexedLerp(idx[b3],   d1-1, d2-1, d3);
+        double l5 = d_indexedLerp(idx[a2+1], d1,   d2,   d3-1);
+        double l6 = d_indexedLerp(idx[b2+1], d1-1, d2,   d3-1);
+        double l7 = d_indexedLerp(idx[a3+1], d1,   d2-1, d3-1);
+        double l8 = d_indexedLerp(idx[b3+1], d1-1, d2-1, d3-1);
+
+        l1 = d_lerp(t1, l1, l2);
+        l3 = d_lerp(t1, l3, l4);
+        l5 = d_lerp(t1, l5, l6);
+        l7 = d_lerp(t1, l7, l8);
+
+        l1 = d_lerp(t2, l1, l3);
+        l5 = d_lerp(t2, l5, l7);
+
+        out[k] = d_lerp(t3, l1, l5);
+    }
+}
+
 // sampleSurfaceNoise — port of cubiomes biomenoise.c
 // (maintainPrecision() is the identity in cubiomes, so it is elided)
-__device__ static double d_sampleSurfaceNoise(
+// Variante K : calcule y0, y0+1, ..., y0+K-1 de la colonne (x, z) d'un coup.
+// Chaque accumulateur garde l'ordre des octaves du CPU : bit-exact.
+template <int K>
+__device__ static inline void d_sampleSurfaceNoiseK(
     const GpuSurfaceNoise* __restrict__ sn,
     const uint8_t* __restrict__ perm,       // perm[octave][257], flattened
-    int x, int y, int z)
+    int x, int y0, int z,
+    double (&noiseOut)[K])
 {
     double xzScale = 684.412 * sn->xzScale;
     double yScale  = 684.412 * sn->yScale;
     double xzStep  = xzScale / sn->xzFactor;
     double yStep   = yScale  / sn->yFactor;
 
-    double minNoise  = 0.0;
-    double maxNoise  = 0.0;
-    double mainNoise = 0.0;
+    double minNoise[K], maxNoise[K], mainNoise[K];
+    #pragma unroll
+    for (int k = 0; k < K; k++) {
+        minNoise[k] = 0.0;
+        maxNoise[k] = 0.0;
+        mainNoise[k] = 0.0;
+    }
     double persist   = 1.0;
     double contrib   = 1.0;
 
     for (int i = 0; i < GPU_OCT_MIN; i++) {
         double dx = x * xzScale * persist;
-        double dy = y * yScale  * persist;
         double dz = z * xzScale * persist;
         double sy = yScale * persist;
-        double ty = y * sy;
+        double dy[K], ty[K], v[K];
+        #pragma unroll
+        for (int k = 0; k < K; k++) {
+            int y = y0 + k;
+            dy[k] = y * yScale  * persist;
+            ty[k] = y * sy;
+        }
 
-        minNoise += d_samplePerlin(&sn->oct[i], perm + (size_t)i * 257,
-                                   dx, dy, dz, sy, ty) * contrib;
-        maxNoise += d_samplePerlin(&sn->oct[GPU_OCT_MIN + i],
-                                   perm + (size_t)(GPU_OCT_MIN + i) * 257,
-                                   dx, dy, dz, sy, ty) * contrib;
+        d_samplePerlinK<K>(&sn->oct[i], perm + (size_t)i * 257,
+                           dx, dy, dz, sy, ty, v);
+        #pragma unroll
+        for (int k = 0; k < K; k++)
+            minNoise[k] += v[k] * contrib;
+
+        d_samplePerlinK<K>(&sn->oct[GPU_OCT_MIN + i],
+                           perm + (size_t)(GPU_OCT_MIN + i) * 257,
+                           dx, dy, dz, sy, ty, v);
+        #pragma unroll
+        for (int k = 0; k < K; k++)
+            maxNoise[k] += v[k] * contrib;
 
         if (i < GPU_OCT_MAIN) {
             double dx2 = x * xzStep * persist;
-            double dy2 = y * yStep  * persist;
             double dz2 = z * xzStep * persist;
             double sy2 = yStep * persist;
-            double ty2 = y * sy2;
-            mainNoise += d_samplePerlin(&sn->oct[GPU_OCT_MIN + GPU_OCT_MAX + i],
-                                        perm + (size_t)(GPU_OCT_MIN + GPU_OCT_MAX + i) * 257,
-                                        dx2, dy2, dz2, sy2, ty2) * contrib;
+            #pragma unroll
+            for (int k = 0; k < K; k++) {
+                int y = y0 + k;
+                dy[k] = y * yStep  * persist;
+                ty[k] = y * sy2;
+            }
+            d_samplePerlinK<K>(&sn->oct[GPU_OCT_MIN + GPU_OCT_MAX + i],
+                               perm + (size_t)(GPU_OCT_MIN + GPU_OCT_MAX + i) * 257,
+                               dx2, dy, dz2, sy2, ty, v);
+            #pragma unroll
+            for (int k = 0; k < K; k++)
+                mainNoise[k] += v[k] * contrib;
         }
 
         persist *= 0.5;
         contrib *= 2.0;
     }
 
-    return d_clampedLerp(0.5 + 0.05 * mainNoise, minNoise / 512.0, maxNoise / 512.0);
+    #pragma unroll
+    for (int k = 0; k < K; k++)
+        noiseOut[k] = d_clampedLerp(0.5 + 0.05 * mainNoise[k],
+                                    minNoise[k] / 512.0, maxNoise[k] / 512.0);
 }
 
 // ============================================================================
@@ -260,13 +370,8 @@ __global__ void compute_random_offsets(
 
 // ============================================================================
 // Kernel 1: compute noise columns
-// One thread per (column, y), flattened so no thread is wasted.
-// Output: noiseGrid[y * numColumns + col]
-//
-// La colonne varie le plus vite d'un thread au suivant : les ecritures d'un
-// warp tombent sur des adresses consecutives (coalescees), et ce layout y-major
-// rend aussi coalescees les lectures du kernel 2, ou des threads voisins en x
-// lisent des colonnes voisines au meme cellY.
+// One thread per (column, NOISE_K consecutive y), flattened.
+// Output: noiseGrid[col * (startSizeY + 1) + y]
 // ============================================================================
 
 __global__ void compute_noise_columns(
@@ -274,9 +379,10 @@ __global__ void compute_noise_columns(
     const GpuSurfaceGenConfig* __restrict__ cfg,
     const ColumnParams*        __restrict__ columns,
     const double*              __restrict__ randomOffsets,
-    int numColumns,             // aussi le pas d'une ligne y de noiseGrid
+    int numColumns,
     int yFrom, int yTo,         // tranche de cellules a calculer
-    int sentinelIdx,            // ligne ou ecrire le 0 de fin de colonne
+    int sentinelIdx,            // indice ou ecrire le 0 de fin de colonne
+    int stride,                 // pas fixe, independant de startSizeY
     double* __restrict__ noiseGrid)
 {
     // Stage the permutation tables in shared memory: samplePerlin does 8
@@ -293,77 +399,88 @@ __global__ void compute_noise_columns(
     // On ne calcule que la tranche [yFrom, yTo). En calcul complet c'est
     // [minCellY, startSizeY) ; en extension apres une reprise de scan, c'est
     // seulement les quelques cellules qui manquent.
-    int tid = blockIdx.x * blockDim.x + threadIdx.x;
-    int row = tid / numColumns;
-    int col = tid - row * numColumns;
-    int y   = yFrom + row;
+    // Chaque thread calcule NOISE_K cellules y consecutives d'une colonne : la
+    // partie x/z de Perlin est faite une fois pour les NOISE_K. Les threads
+    // voisins restent sur la meme colonne (cf. TODO 2.1 : sinon les lookups
+    // perm divergent dans le warp).
+    const int nY      = yTo - yFrom;
+    const int nChunks = (nY + NOISE_K - 1) / NOISE_K;
+    int tid   = blockIdx.x * blockDim.x + threadIdx.x;
+    int col   = tid / nChunks;
+    int chunk = tid - col * nChunks;
+    int y0    = yFrom + chunk * NOISE_K;
 
-    if (y >= yTo)
+    if (col >= numColumns)
         return;
 
     const ColumnParams cp = columns[col];
     const double randomOffset = randomOffsets[col];
 
-    double noise = d_sampleSurfaceNoise(sn, s_perm, cp.cellX, y, cp.cellZ);
+    // La derniere tranche peut depasser yTo : les y en trop sont calcules
+    // (calcul pur, sans acces hors bornes) mais pas ecrits.
+    double noiseK[NOISE_K];
+    d_sampleSurfaceNoiseK<NOISE_K>(sn, s_perm, cp.cellX, y0, cp.cellZ, noiseK);
 
-    // Density + falloff (1.16+ branch), mirrors sample_noise_column()
-    double fallOff1 = 1.0 - (double)y * 2.0 / (double)cfg->noiseSizeY + randomOffset;
-    double fallOff2 = fallOff1 * cfg->densityFactor + cfg->densityOffset;
-    double fallOff3 = (fallOff2 + cp.depth) * cp.scale;
+    #pragma unroll
+    for (int k = 0; k < NOISE_K; k++) {
+        const int y = y0 + k;
+        if (y >= yTo)
+            break;
+        double noise = noiseK[k];
 
-    if (fallOff3 > 0.0)
-        noise = noise + fallOff3 * 4.0;
-    else
-        noise = noise + fallOff3;
+        // Density + falloff (1.16+ branch), mirrors sample_noise_column()
+        double fallOff1 = 1.0 - (double)y * 2.0 / (double)cfg->noiseSizeY + randomOffset;
+        double fallOff2 = fallOff1 * cfg->densityFactor + cfg->densityOffset;
+        double fallOff3 = (fallOff2 + cp.depth) * cp.scale;
 
-    if (cfg->topSlideSize > 0.0) {
-        double num = ((double)(cfg->noiseSizeY - y) - cfg->topSlideOffset) / cfg->topSlideSize;
-        noise = d_clampedLerpAB(cfg->topSlideTarget, noise, num);
+        if (fallOff3 > 0.0)
+            noise = noise + fallOff3 * 4.0;
+        else
+            noise = noise + fallOff3;
+
+        if (cfg->topSlideSize > 0.0) {
+            double num = ((double)(cfg->noiseSizeY - y) - cfg->topSlideOffset) / cfg->topSlideSize;
+            noise = d_clampedLerpAB(cfg->topSlideTarget, noise, num);
+        }
+        if (cfg->botSlideSize > 0.0) {
+            double num = ((double)y - cfg->botSlideOffset) / cfg->botSlideSize;
+            noise = d_clampedLerpAB(cfg->botSlideTarget, noise, num);
+        }
+
+        noiseGrid[(size_t)col * stride + y] = noise;
     }
-    if (cfg->botSlideSize > 0.0) {
-        double num = ((double)y - cfg->botSlideOffset) / cfg->botSlideSize;
-        noise = d_clampedLerpAB(cfg->botSlideTarget, noise, num);
-    }
-
-    noiseGrid[(size_t)y * numColumns + col] = noise;
 
     // Cote CPU le buffer est calloc'd et seul [0, startSizeY) est ecrit, donc
     // l'indice startSizeY relit 0.0. On reproduit ca. En extension, l'ancienne
     // sentinelle est ecrasee par sa vraie valeur (elle est dans [yFrom, yTo))
     // et la nouvelle est posee plus haut.
-    if (y == yFrom)
-        noiseGrid[(size_t)sentinelIdx * numColumns + col] = 0.0;
+    if (chunk == 0)
+        noiseGrid[(size_t)col * stride + sentinelIdx] = 0.0;
 }
 
 // ============================================================================
 // Shared height scan — identical to generate_column_from_y()
 // ============================================================================
 
-// noiseGrid est y-major : la valeur (colonne c, cellule y) est a
-// noiseGrid[y * rowStride + c].
 __device__ static inline int scan_column(
     const GpuSurfaceGenConfig* __restrict__ cfg,
-    const double* __restrict__ noiseGrid,
-    int rowStride,                          // nombre de colonnes du lot
-    int c0,                                 // (cellX,   cellZ)
-    int c1,                                 // (cellX,   cellZ+1)
-    int c2,                                 // (cellX+1, cellZ)
-    int c3,                                 // (cellX+1, cellZ+1)
+    const double* __restrict__ col0,        // (cellX,   cellZ)
+    const double* __restrict__ col1,        // (cellX,   cellZ+1)
+    const double* __restrict__ col2,        // (cellX+1, cellZ)
+    const double* __restrict__ col3,        // (cellX+1, cellZ+1)
     int startSizeY, int minCellY,
     double percentX, double percentZ,
     int predicate)
 {
     for (int cellY = startSizeY - 1; cellY >= minCellY; --cellY) {
-        const double* row0 = noiseGrid + (size_t)cellY * rowStride;
-        const double* row1 = row0 + rowStride;
-        double xyz    = row0[c0];
-        double xyz1   = row0[c1];
-        double x1yz   = row0[c2];
-        double x1yz1  = row0[c3];
-        double xy1z   = row1[c0];
-        double xy1z1  = row1[c1];
-        double x1y1z  = row1[c2];
-        double x1y1z1 = row1[c3];
+        double xyz    = col0[cellY];
+        double xyz1   = col1[cellY];
+        double x1yz   = col2[cellY];
+        double x1yz1  = col3[cellY];
+        double xy1z   = col0[cellY + 1];
+        double xy1z1  = col1[cellY + 1];
+        double x1y1z  = col2[cellY + 1];
+        double x1y1z1 = col3[cellY + 1];
 
         for (int posY = cfg->chunkHeight - 1; posY >= 0; --posY) {
             double percentY = (double)posY / (double)cfg->chunkHeight;
@@ -392,7 +509,7 @@ __device__ static inline int scan_column(
 __global__ void compute_heights_scattered(
     const GpuSurfaceGenConfig* __restrict__ cfg,
     const double* __restrict__ noiseGrid,
-    int startSizeY, int minCellY, int rowStride,
+    int startSizeY, int minCellY, int stride,
     const int* __restrict__ queryX,
     const int* __restrict__ queryZ,
     const int* __restrict__ cornerIndices,      // [numQueries * 4]
@@ -418,7 +535,9 @@ __global__ void compute_heights_scattered(
     double percentX = (double)posX / (double)cfg->chunkWidth;
     double percentZ = (double)posZ / (double)cfg->chunkWidth;
 
-    heightsOut[q] = scan_column(cfg, noiseGrid, rowStride, c0, c1, c2, c3,
+    heightsOut[q] = scan_column(cfg,
+        noiseGrid + (size_t)c0 * stride, noiseGrid + (size_t)c1 * stride,
+        noiseGrid + (size_t)c2 * stride, noiseGrid + (size_t)c3 * stride,
         startSizeY, minCellY, percentX, percentZ, predicate);
 }
 
@@ -426,38 +545,110 @@ __global__ void compute_heights_scattered(
 // Kernel 2b: rectangular heightmap — corner indices derived arithmetically
 // ============================================================================
 
+// Un thread par (rangee z, cellule x) : les (jusqu'a) HMAP_PX positions x
+// d'une meme cellule partagent les 8 coins, charges une seule fois par cellY
+// (TODO 2.6). Chaque position garde son propre lerp3 et son propre ordre de
+// scan : bit-exact. Moins de HMAP_PX positions aux bords quand x0 ou w ne
+// tombent pas sur une limite de cellule.
+#define HMAP_PX 4   // chunkWidth maximal accepte (4 dans toutes les dimensions)
+
+__host__ __device__ static inline int rect_first_cell_x(int x0, int chunkWidth)
+{
+    return (int)floor((double)x0 / (double)chunkWidth);
+}
+
+__host__ __device__ static inline int rect_cells_x(int x0, int w, int chunkWidth)
+{
+    return rect_first_cell_x(x0 + w - 1, chunkWidth) - rect_first_cell_x(x0, chunkWidth) + 1;
+}
+
 __global__ void compute_heightmap_rect(
     const GpuSurfaceGenConfig* __restrict__ cfg,
     const double* __restrict__ noiseGrid,
-    int startSizeY, int minCellY, int rowStride,
+    int startSizeY, int minCellY, int stride,
     int gridW, int cellX0, int cellZ0,
     int x0, int z0, int w, int h,
     int predicate,
     int* __restrict__ heightsOut)
 {
-    int q = blockIdx.x * blockDim.x + threadIdx.x;
-    if (q >= w * h)
+    const int cw      = cfg->chunkWidth;
+    const int nCellsX = rect_cells_x(x0, w, cw);
+
+    int t = blockIdx.x * blockDim.x + threadIdx.x;
+    if (t >= nCellsX * h)
         return;
 
-    int ix = q % w;
-    int iz = q / w;
-    int x = x0 + ix;
-    int z = z0 + iz;
+    int iz    = t / nCellsX;
+    int cellX = rect_first_cell_x(x0, cw) + (t - iz * nCellsX);
+    int z     = z0 + iz;
 
-    int cellX = (int)floor((double)x / (double)cfg->chunkWidth);
-    int cellZ = (int)floor((double)z / (double)cfg->chunkWidth);
+    // Positions [xBeg, xEnd) de la cellule, bornees par le rectangle
+    int xBeg = cellX * cw;
+    int xEnd = xBeg + cw;
+    if (xBeg < x0)     xBeg = x0;
+    if (xEnd > x0 + w) xEnd = x0 + w;
+    const int n = xEnd - xBeg;                  // 1..cw
 
+    int cellZ = (int)floor((double)z / (double)cw);
     int c0 = (cellZ - cellZ0) * gridW + (cellX - cellX0);
 
-    int posX = ((x % cfg->chunkWidth) + cfg->chunkWidth) % cfg->chunkWidth;
-    int posZ = ((z % cfg->chunkWidth) + cfg->chunkWidth) % cfg->chunkWidth;
+    int posZ = ((z % cw) + cw) % cw;
+    double percentZ = (double)posZ / (double)cw;
 
-    double percentX = (double)posX / (double)cfg->chunkWidth;
-    double percentZ = (double)posZ / (double)cfg->chunkWidth;
+    double percentX[HMAP_PX];
+    int    res[HMAP_PX];
+    #pragma unroll
+    for (int k = 0; k < HMAP_PX; k++) {
+        int x = xBeg + (k < n ? k : n - 1);     // hors cellule : copie, ignoree
+        int posX = ((x % cw) + cw) % cw;
+        percentX[k] = (double)posX / (double)cw;
+        res[k] = 0;
+    }
+    unsigned todo = (1u << n) - 1u;             // positions pas encore trouvees
 
-    heightsOut[q] = scan_column(cfg, noiseGrid, rowStride,
-        c0, c0 + gridW, c0 + 1, c0 + gridW + 1,
-        startSizeY, minCellY, percentX, percentZ, predicate);
+    const double* __restrict__ col0 = noiseGrid + (size_t)(c0)             * stride;
+    const double* __restrict__ col1 = noiseGrid + (size_t)(c0 + gridW)     * stride;
+    const double* __restrict__ col2 = noiseGrid + (size_t)(c0 + 1)         * stride;
+    const double* __restrict__ col3 = noiseGrid + (size_t)(c0 + gridW + 1) * stride;
+
+    // Meme boucle que scan_column, pour les n positions a la fois
+    for (int cellY = startSizeY - 1; cellY >= minCellY && todo; --cellY) {
+        double xyz    = col0[cellY];
+        double xyz1   = col1[cellY];
+        double x1yz   = col2[cellY];
+        double x1yz1  = col3[cellY];
+        double xy1z   = col0[cellY + 1];
+        double xy1z1  = col1[cellY + 1];
+        double x1y1z  = col2[cellY + 1];
+        double x1y1z1 = col3[cellY + 1];
+
+        for (int posY = cfg->chunkHeight - 1; posY >= 0 && todo; --posY) {
+            double percentY = (double)posY / (double)cfg->chunkHeight;
+            int y = cellY * cfg->chunkHeight + posY;
+
+            #pragma unroll
+            for (int k = 0; k < HMAP_PX; k++) {
+                if (!((todo >> k) & 1u))
+                    continue;
+                double noise = d_lerp3(percentY, percentX[k], percentZ,
+                                       xyz,  xy1z,  x1yz,  x1y1z,
+                                       xyz1, xy1z1, x1yz1, x1y1z1);
+                bool hit = (predicate == HEIGHT_PRED_STONE)
+                         ? (noise > 0.0)
+                         : (noise > 0.0 || y < cfg->seaLevel);
+                if (hit) {
+                    res[k] = y + 1;
+                    todo &= ~(1u << k);
+                }
+            }
+        }
+    }
+
+    int* out = heightsOut + (size_t)iz * w + (xBeg - x0);
+    #pragma unroll
+    for (int k = 0; k < HMAP_PX; k++)
+        if (k < n)
+            out[k] = res[k];
 }
 
 // ============================================================================
@@ -478,7 +669,7 @@ struct CudaNoiseContext {
     GpuSurfaceGenConfig hostCfg;
     int maxColumns;
     int maxQueries;
-    int allocRows;          // nombre de lignes y réservées dans d_noiseGrid (y-major)
+    int allocStride;        // stride en doubles réservé par colonne dans d_noiseGrid
 
     cudaEvent_t evStart, evUpload, evColumns, evHeights, evEnd;
     float msUpload, msColumns, msHeights, msDownload;
@@ -554,8 +745,8 @@ CudaNoiseContext* cuda_noise_init(
     // rebasculer sur une autre config par simple ré-upload.
     int maxStartSizeY = hostCfg->noiseSizeY > hostCfg->startSizeY
                       ? hostCfg->noiseSizeY : hostCfg->startSizeY;
-    ctx->allocRows = maxStartSizeY + 1;
-    const int rows = ctx->allocRows;
+    ctx->allocStride = maxStartSizeY + 1;
+    const int stride = ctx->allocStride;
 
     CUDA_CHECK(cudaMalloc(&ctx->d_sn, sizeof(GpuSurfaceNoise)));
     CUDA_CHECK(cudaMemcpy(ctx->d_sn, hostSN, sizeof(GpuSurfaceNoise), cudaMemcpyHostToDevice));
@@ -565,7 +756,7 @@ CudaNoiseContext* cuda_noise_init(
 
     CUDA_CHECK(cudaMalloc(&ctx->d_columns,   sizeof(ColumnParams) * (size_t)maxColumns));
     CUDA_CHECK(cudaMalloc(&ctx->d_randomOffsets, sizeof(double) * (size_t)maxColumns));
-    CUDA_CHECK(cudaMalloc(&ctx->d_noiseGrid, sizeof(double) * (size_t)maxColumns * rows));
+    CUDA_CHECK(cudaMalloc(&ctx->d_noiseGrid, sizeof(double) * (size_t)maxColumns * stride));
     CUDA_CHECK(cudaMalloc(&ctx->d_queryX,    sizeof(int) * (size_t)maxQueries));
     CUDA_CHECK(cudaMalloc(&ctx->d_queryZ,    sizeof(int) * (size_t)maxQueries));
     CUDA_CHECK(cudaMalloc(&ctx->d_cornerIndices, sizeof(int) * (size_t)maxQueries * 4));
@@ -585,7 +776,7 @@ int cuda_noise_update_state(CudaNoiseContext* ctx,
                             const GpuSurfaceGenConfig* hostCfg)
 {
     if (!ctx || !hostSN || !hostCfg) return -1;
-    if (hostCfg->startSizeY + 1 > ctx->allocRows) return -1;
+    if (hostCfg->startSizeY + 1 > ctx->allocStride) return -1;
 
     ctx->hostCfg = *hostCfg;
     CUDA_CHECK_INT(cudaMemcpy(ctx->d_sn, hostSN, sizeof(GpuSurfaceNoise),
@@ -669,7 +860,7 @@ static int launch_columns(CudaNoiseContext* ctx, const ColumnParams* columns,
     }
     CUDA_CHECK_INT(cudaGetLastError());
 
-    long long threads = (long long)numColumns * (yTo - yFrom);
+    long long threads = (long long)numColumns * ((yTo - yFrom + NOISE_K - 1) / NOISE_K);
     if (threads <= 0) {
         fprintf(stderr, "launch_columns: rien a lancer (numColumns=%d, yFrom=%d, yTo=%d)\n",
                 numColumns, yFrom, yTo);
@@ -678,7 +869,7 @@ static int launch_columns(CudaNoiseContext* ctx, const ColumnParams* columns,
     int gridSize = (int)((threads + NOISE_BLOCK - 1) / NOISE_BLOCK);
     compute_noise_columns<<<gridSize, NOISE_BLOCK, PERM_SURF_BYTES>>>(
         ctx->d_sn, ctx->d_cfg, ctx->d_columns, ctx->d_randomOffsets,
-        numColumns, yFrom, yTo, sentinelIdx, ctx->d_noiseGrid);
+        numColumns, yFrom, yTo, sentinelIdx, ctx->allocStride, ctx->d_noiseGrid);
     CUDA_CHECK_INT(cudaGetLastError());
     CUDA_CHECK_INT(cudaEventRecord(ctx->evColumns));
     return 0;
@@ -730,7 +921,7 @@ int cuda_noise_batch_heights(
 
     int gridSize = (numQueries + HEIGHT_BLOCK - 1) / HEIGHT_BLOCK;
     compute_heights_scattered<<<gridSize, HEIGHT_BLOCK>>>(
-        ctx->d_cfg, ctx->d_noiseGrid, ctx->hostCfg.startSizeY, minCellY, numColumns,
+        ctx->d_cfg, ctx->d_noiseGrid, ctx->hostCfg.startSizeY, minCellY, ctx->allocStride,
         ctx->d_queryX, ctx->d_queryZ, ctx->d_cornerIndices,
         numQueries, predicate, ctx->d_heights);
     CUDA_CHECK_INT(cudaGetLastError());
@@ -762,9 +953,15 @@ int cuda_noise_heightmap(
     if (launch_columns(ctx, columns, numColumns, minCellY, ctx->hostCfg.startSizeY,
                        ctx->hostCfg.startSizeY, true, true) != 0) return -1;
 
-    int gridSize = (numQueries + HEIGHT_BLOCK - 1) / HEIGHT_BLOCK;
+    if (ctx->hostCfg.chunkWidth <= 0 || ctx->hostCfg.chunkWidth > HMAP_PX) {
+        fprintf(stderr, "compute_heightmap_rect: chunkWidth %d non supporte (max %d)\n",
+                ctx->hostCfg.chunkWidth, HMAP_PX);
+        return -1;
+    }
+    int rectThreads = rect_cells_x(x0, w, ctx->hostCfg.chunkWidth) * h;
+    int gridSize = (rectThreads + HEIGHT_BLOCK - 1) / HEIGHT_BLOCK;
     compute_heightmap_rect<<<gridSize, HEIGHT_BLOCK>>>(
-        ctx->d_cfg, ctx->d_noiseGrid, ctx->hostCfg.startSizeY, minCellY, numColumns,
+        ctx->d_cfg, ctx->d_noiseGrid, ctx->hostCfg.startSizeY, minCellY, ctx->allocStride,
         gridW, cellX0, cellZ0, x0, z0, w, h, predicate, ctx->d_heights);
     CUDA_CHECK_INT(cudaGetLastError());
 
@@ -782,7 +979,7 @@ int cuda_noise_heightmap_extend(
     if (!ctx) return -1;
     if (gridW <= 0 || gridH <= 0 || w <= 0 || h <= 0) return -1;
     if (newStartSizeY <= oldStartSizeY) return -1;
-    if (newStartSizeY + 1 > ctx->allocRows) return -1;     // ne tient pas
+    if (newStartSizeY + 1 > ctx->allocStride) return -1;   // ne tient pas
 
     const int numColumns = gridW * gridH;
     const int numQueries = w * h;
@@ -799,9 +996,15 @@ int cuda_noise_heightmap_extend(
         return -1;
 
     const int minCellY = height_scan_floor(&ctx->hostCfg, predicate);
-    int gridSize = (numQueries + HEIGHT_BLOCK - 1) / HEIGHT_BLOCK;
+    if (ctx->hostCfg.chunkWidth <= 0 || ctx->hostCfg.chunkWidth > HMAP_PX) {
+        fprintf(stderr, "compute_heightmap_rect: chunkWidth %d non supporte (max %d)\n",
+                ctx->hostCfg.chunkWidth, HMAP_PX);
+        return -1;
+    }
+    int rectThreads = rect_cells_x(x0, w, ctx->hostCfg.chunkWidth) * h;
+    int gridSize = (rectThreads + HEIGHT_BLOCK - 1) / HEIGHT_BLOCK;
     compute_heightmap_rect<<<gridSize, HEIGHT_BLOCK>>>(
-        ctx->d_cfg, ctx->d_noiseGrid, newStartSizeY, minCellY, numColumns,
+        ctx->d_cfg, ctx->d_noiseGrid, newStartSizeY, minCellY, ctx->allocStride,
         gridW, cellX0, cellZ0, x0, z0, w, h, predicate, ctx->d_heights);
     CUDA_CHECK_INT(cudaGetLastError());
 
