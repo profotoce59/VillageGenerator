@@ -141,6 +141,20 @@ coverage: export CUBIOMES_LAYER_CACHE = 0
 coverage: analyze_coverage
 	./analyze_coverage.exe --count $(PROFILE_COUNT)
 
+# Etude de correlation : la piece n°K predit-elle la taille du village ?
+stats_pieces: stats_pieces.cpp cuda_height_provider.cpp cuda_height_provider.hpp \
+              $(VILLAGE_SRC) $(LIB) $(LIBCUBIOMES) $(HOST_OBJ)
+	$(NVCC) $(NVCC_FLAGS) -Xcompiler -wd4267 -Xcompiler -wd4244 \
+		stats_pieces.cpp cuda_height_provider.cpp $(VILLAGE_SRC) \
+		$(HOST_OBJ) $(LIB) $(LIBCUBIOMES) -o $@
+
+stats: export CUBIOMES_LAYER_CACHE = 0
+stats: stats_pieces
+	./stats_pieces.exe --by $(STATS_BY) --seeds $(STATS_SEEDS) --threads $(THREADS)
+
+STATS_BY    ?= 1
+STATS_SEEDS ?= 20
+
 
 
 # Cas de regression sur des villages precis (coherence avec le jeu).
@@ -150,6 +164,18 @@ test_village_seeds: test_village_seeds.cpp cuda_height_provider.cpp cuda_height_
 seeds: export CUBIOMES_LAYER_CACHE = 0
 seeds: test_village_seeds
 	./test_village_seeds.exe
+
+
+# Balayage exhaustif des 2^16 world seeds pour des structure seeds connues.
+refine_seeds: refine_seeds.cpp cuda_height_provider.cpp cuda_height_provider.hpp \
+              $(VILLAGE_SRC) $(LIB) $(LIBCUBIOMES) $(HOST_OBJ)
+	$(NVCC) $(NVCC_FLAGS) -Xcompiler -wd4267 -Xcompiler -wd4244 		refine_seeds.cpp cuda_height_provider.cpp $(VILLAGE_SRC) 		$(HOST_OBJ) $(LIB) $(LIBCUBIOMES) -o $@
+
+refine: refine_seeds
+	./refine_seeds.exe --in $(REFINE_IN) --out $(REFINE_OUT) --threads $(THREADS)
+
+REFINE_IN  ?= village_finds.log
+REFINE_OUT ?= seeds_trouvees.txt
 
 # Recherche de villages à forte densité de forgerons.
 search_village_cuda: search_village_cuda.cpp cuda_height_provider.cpp cuda_height_provider.hpp \
@@ -182,4 +208,4 @@ bench-cuda: bench_village
 	./bench_village.exe --cuda --seed $(BENCH_SEED) --worlds $(BENCH_WORLDS) --threads $(BENCH_THREADS)
 
 clean:
-	rm -f *.obj *.o *.lib *.exp *.exe *.pdb test_cuda test_village_cuda bench_village search_village_cuda profile_village analyze_coverage test_village_seeds
+	rm -f *.obj *.o *.lib *.exp *.exe *.pdb test_cuda test_village_cuda bench_village search_village_cuda profile_village analyze_coverage test_village_seeds refine_seeds

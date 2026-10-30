@@ -16,12 +16,22 @@
  *     --out FICHIER   journalise aussi dans ce fichier (ajout en fin)
  *     --threads N     threads de travail (défaut 4)
  *     --biome NOM     taiga (défaut) / plains / desert / savanna / snowy / any
+ *     --start NOM     ne garder que les villages dont le CENTRE est ce template
+ *                     (répétable, ou liste séparée par des virgules ; "any"
+ *                     enlève le filtre). Le village
+ *                     est abandonné avant tout assemblage si le centre ne
+ *                     correspond pas — utile pour ignorer les centres qui
+ *                     donnent surtout de petits villages.
+ *                     Centres taiga : taiga/town_centers/taiga_meeting_point_1
+ *                                     taiga/town_centers/taiga_meeting_point_2
+ *                                     taiga/zombie/town_centers/taiga_meeting_point_1
+ *                                     taiga/zombie/town_centers/taiga_meeting_point_2
  *     --shard I --shards S   partitionnement pour lancer plusieurs PROCESSUS
  *     --cpu           hauteurs sur CPU (pour comparer les débits)
  *
  * Chaque thread possède son propre CudaHeightProvider (contexte CUDA et zone
  * pré-calculée non partageables) et sa propre tranche de structure seeds.
- * Au-delà de ~6 threads le GPU sature : mesuré ~725 villages/s sur RTX 5070.
+ * Optimum mesuré sur RTX 5070 + Ryzen 7 9700X : 16 à 20 threads (~1850 villages/s).
  */
 
 #include "cuda_height_provider.hpp"
@@ -140,6 +150,22 @@ int main(int argc, char** argv)
     bool     useCuda    = true;
     // Défaut taiga, comme filterTaiga = true dans test_village_generation.cpp.
     int      biomeFilter = (int)Biome::Type::TAIGA;
+    // ------------------------------------------------------------------
+    // Centres de village acceptés par défaut. C'EST LA LIGNE À MODIFIER.
+    //
+    // Le village est abandonné avant tout assemblage si son centre n'est pas
+    // dans la liste. Mesuré sur 300 world seeds, pièces par village selon le
+    // centre taiga :
+    //     taiga_meeting_point_1 (poids 49) :  81,6
+    //     taiga_meeting_point_2 (poids 49) : 130,9   <- 60 % plus gros
+    //     variantes zombie      (poids  1) : trop rares pour conclure
+    //
+    // Liste vide = tous les centres. Surchargée par --start ; --start any
+    // remet tout.
+    std::vector<std::string> startFilter = {
+        "taiga/town_centers/taiga_meeting_point_2",
+    };
+    bool startFilterFromCli = false;
 
     for (int i = 1; i < argc; i++) {
         if      (!strcmp(argv[i], "--cpu")) useCuda = false;
@@ -161,11 +187,26 @@ int main(int argc, char** argv)
                 return 2;
             }
         }
+        else if (!strcmp(argv[i], "--start") && i+1 < argc) {
+            // Le premier --start remplace le défaut ; les suivants s'ajoutent.
+            if (!startFilterFromCli) { startFilter.clear(); startFilterFromCli = true; }
+            // accepte "a,b" aussi bien que --start a --start b
+            std::string v = argv[++i];
+            if (v == "any" || v == "all") { startFilter.clear(); continue; }
+            size_t p0 = 0;
+            while (p0 <= v.size()) {
+                size_t p1 = v.find(',', p0);
+                if (p1 == std::string::npos) p1 = v.size();
+                if (p1 > p0) startFilter.push_back(v.substr(p0, p1 - p0));
+                p0 = p1 + 1;
+            }
+        }
         else { fprintf(stderr, "argument inconnu : %s\n", argv[i]); return 2; }
     }
     if (threads < 1) threads = 1;
     if (shards  < 1) shards  = 1;
     if (!seedGiven) startSeed = randomStructureSeed();
+    VillageGenerator::setStartTemplateFilter(startFilter);
 
     Logger log;
     log.open(outPath);
@@ -180,14 +221,13 @@ int main(int argc, char** argv)
     if (shards > 1) log.line(",  shard %d/%d", shard, shards);
     log.line("\nbiome : %s\n", biomeFilter < 0 ? "tous" : biomeFilterName(biomeFilter));
     log.line("forgerons comptes : %d noms\n", NUM_WEAPONSMITHS);
-
-    {
-        const char* env = getenv("CUBIOMES_LAYER_CACHE");
-        if (!env || env[0] != '0')
-            log.line("\nATTENTION : CUBIOMES_LAYER_CACHE n'est pas a 0. Le cache de layer de\n"
-                     "  cubiomes renvoie des biomes faux pour les requetes 1x1, les resultats\n"
-                     "  de la recherche ne sont pas fiables. Voir c/test_layer_cache_consistency.c\n");
+    if (startFilter.empty()) {
+        log.line("centres acceptes : tous\n");
+    } else {
+        log.line("centres acceptes : %d\n", (int)startFilter.size());
+        for (const std::string& sf : startFilter) log.line("  %s\n", sf.c_str());
     }
+
     log.line("\n");
 
     // Prechauffage CUDA sur le thread principal : le premier appel du processus

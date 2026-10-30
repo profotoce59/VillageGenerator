@@ -37,6 +37,7 @@ extern "C" {
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <string>
 #include <vector>
 
 using Clock = std::chrono::steady_clock;
@@ -66,6 +67,7 @@ int main(int argc, char** argv)
     long worlds    = 520;      // ~10 000 villages pour la seed 1
     int  nThreads  = 1;
     bool quiet     = false;
+    std::vector<std::string> startFilter;
 
     for (int i = 1; i < argc; i++) {
         if      (!strcmp(argv[i], "--cuda"))  useCuda = true;
@@ -76,9 +78,20 @@ int main(int argc, char** argv)
         else if (!strcmp(argv[i], "--threads") && i + 1 < argc) nThreads = atoi(argv[++i]);
         else if (!strcmp(argv[i], "--prefetch-radius") && i + 1 < argc)
             VillageGenerator::setPrefetchRadius(atoi(argv[++i]));
+        else if (!strcmp(argv[i], "--start") && i + 1 < argc) {
+            std::string v = argv[++i];
+            size_t p0 = 0;
+            while (p0 <= v.size()) {
+                size_t p1 = v.find(',', p0);
+                if (p1 == std::string::npos) p1 = v.size();
+                if (p1 > p0) startFilter.push_back(v.substr(p0, p1 - p0));
+                p0 = p1 + 1;
+            }
+        }
         else { fprintf(stderr, "argument inconnu : %s\n", argv[i]); return 2; }
     }
     if (nThreads < 1) nThreads = 1;
+    VillageGenerator::setStartTemplateFilter(startFilter);
     if (worlds   < 1) worlds   = 1;
 
     printf("=== Benchmark génération de villages ===\n");
@@ -87,14 +100,6 @@ int main(int argc, char** argv)
     printf("world seeds: %ld\n", worlds);
     printf("threads    : %d\n", nThreads);
 
-    {
-        const char* env = getenv("CUBIOMES_LAYER_CACHE");
-        if (!env || env[0] != '0')
-            printf("\nATTENTION : CUBIOMES_LAYER_CACHE n'est pas à 0. Le cache de layer de\n"
-                   "  cubiomes fausse les biomes des requêtes 1x1, les deux backends ne\n"
-                   "  produiront pas les mêmes villages et les checksums différeront.\n"
-                   "  Voir c/test_layer_cache_consistency.c\n");
-    }
     printf("\n");
 
     // Positions de village de la structure seed : identiques pour tous les

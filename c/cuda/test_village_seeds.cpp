@@ -214,12 +214,6 @@ static int checkVillage(uint64_t worldSeed, int cx, int cz, bool dump)
 int main(int argc, char** argv)
 {
     printf("=== Cas de regression sur villages precis ===\n");
-    {
-        const char* env = getenv("CUBIOMES_LAYER_CACHE");
-        if (!env || env[0] != '0')
-            printf("\nATTENTION : CUBIOMES_LAYER_CACHE n'est pas a 0, les biomes des\n"
-                   "  requetes 1x1 sont faux (cf. c/test_layer_cache_consistency.c).\n");
-    }
 
     int problems = 0;
     if (argc >= 4) {

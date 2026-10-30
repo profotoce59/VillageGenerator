@@ -16,6 +16,7 @@
 #include <stdexcept>
 #include <cstring>
 #include <unordered_map>
+#include <cstdlib>
 
 // JigsawBlocks data - inclure avant les headers générés
 struct JigsawBlockEntry {
@@ -37,6 +38,21 @@ struct JigsawBlockEntry {
 static int g_prefetchRadius = 0;
 void VillageGenerator::setPrefetchRadius(int blocks) { g_prefetchRadius = blocks; }
 int  VillageGenerator::getPrefetchRadius() { return g_prefetchRadius; }
+
+// Liste blanche de centres de village. Vide = pas de filtre.
+static std::vector<std::string> g_startTemplateFilter;
+void VillageGenerator::setStartTemplateFilter(const std::vector<std::string>& allowed) {
+    g_startTemplateFilter = allowed;
+}
+const std::vector<std::string>& VillageGenerator::getStartTemplateFilter() {
+    return g_startTemplateFilter;
+}
+static inline bool startTemplateAllowed(const std::string& name) {
+    if (g_startTemplateFilter.empty()) return true;
+    for (const std::string& s : g_startTemplateFilter)
+        if (s == name) return true;
+    return false;
+}
 
 // Helper function to convert Biome type to Village type
 static VillageType biomeToVillageType(const Biome* biome) {
@@ -201,6 +217,61 @@ static void getShuffledJigsawBlocks(
         }
     }
     rand.shuffle(out);
+}
+
+/**
+ * Existe-t-il, dans la table jigsaw brute, une entrée capable de s'attacher à
+ * `target` une fois tournée de `rotation` ?
+ *
+ * Mesuré : 48,2 % des candidats testés n'ont AUCUN point d'attache. Pour
+ * ceux-là, construire la liste tournée puis la mélanger ne sert à rien — ce
+ * test le dit en lisant directement la table statique, sans rien allouer.
+ *
+ * Reproduit exactement la condition de BlockJigsawInfo::canAttach15, où `this`
+ * est la cible et `other` une entrée de la liste candidate.
+ */
+// VILLAGE_ATTACH_SHORTCUT=0 desactive le raccourci, pour pouvoir mesurer son
+// apport avec le meme binaire (les mesures de debit ont ~10 % de variance, un
+// A/B entrelace est indispensable).
+static bool attachShortcutEnabled()
+{
+    static const int on = []{
+        const char* e = getenv("VILLAGE_ATTACH_SHORTCUT");
+        return (e && e[0] == '0') ? 0 : 1;
+    }();
+    return on != 0;
+}
+
+static bool anyCanAttach(const JigsawBlockEntry* data, size_t count,
+                         BlockRotation rotation, const BlockJigsawInfo& target)
+{
+    if (!attachShortcutEnabled()) return true;
+    for (size_t i = 0; i < count; i++) {
+        BlockDirection worldFront = BlockRotationHelper::rotate(data[i].front, rotation);
+        if (BlockRotationHelper::getOpposite(worldFront) != target.front) continue;
+        const char* a = data[i].jointName;
+        const char* b = target.jointName;
+        if (a == b) return true;
+        if (!a || !b) continue;
+        if (strcmp(a, b) == 0) return true;
+    }
+    return false;
+}
+
+/**
+ * Consomme exactement le hasard que ChunkRand::shuffle aurait tiré pour une
+ * liste de `count` éléments, sans la construire.
+ *
+ * C'est ce qui rend le raccourci ci-dessus légitime : shuffle tire nextInt(n)
+ * pour n de count à 2, et ces tirages ne dépendent QUE de la taille. Sauter la
+ * construction sans les consommer décalerait toute la suite du monde généré.
+ */
+static void consumeShuffle(ChunkRand& rand, size_t count)
+{
+    for (size_t i = count; i > 1; ) {
+        rand.nextInt((int32_t)i);
+        --i;
+    }
 }
 
 // Variante remplissant un buffer réutilisé : évite d'allouer un vecteur de 4
@@ -440,6 +511,14 @@ public:
                 for (BlockRotation rotation1 : bufRotations) {
                     BlockBox box1(0, 0, 0, 0, 0, 0);
                     if (hasSize) box1 = BlockBox::getBoundingBox(BPos(0, 0, 0), rotation1, size1);
+                    // Aucun point d'attache possible : on consomme le hasard que
+                    // le mélange aurait tiré, et on passe. Ni construction de
+                    // liste, ni rotation de positions, ni mélange.
+                    if (!anyCanAttach(jigsawData, jigsawCount, rotation1, blockJigsawInfo)) {
+                        consumeShuffle(rand, jigsawData ? jigsawCount : 0);
+                        continue;
+                    }
+
                     // Pas de Piece temporaire ici : seuls le nom, la position
                     // et la rotation servaient, et la construire copiait un
                     // std::string 3,3 millions de fois par lot de villages.
@@ -601,6 +680,11 @@ bool VillageGenerator::generate(TerrainGenerator* generator, int chunkX, int chu
     if (it == STARTS.end()) return false;
     std::string templateName(rand.getRandom(it->second));
     if (templateName.empty()) return false;
+
+    // Abandon au plus tôt : le centre tiré n'est pas dans la liste blanche.
+    // Rien n'est assemblé, aucune hauteur n'est calculée. Le ChunkRand étant
+    // propre à ce village, sortir ici n'affecte pas les villages suivants.
+    if (!startTemplateAllowed(templateName)) return false;
 
     // 4) Template size and world-space bounding box (STRUCTURE_SIZE.get(template))
     BPos size;
