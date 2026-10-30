@@ -496,7 +496,11 @@ struct CudaNoiseContext {
     } \
 } while(0)
 
-static const int  NOISE_BLOCK  = 128;
+// 64 et non 128 : nos lancements sont petits (~66 blocs de 128 threads pour
+// 48 SMs), donc ce qui compte est la repartition sur les SMs, pas l'occupation
+// par SM. Mesure du temps de kernels : 256 -> 1.54 s, 128 -> 1.37 s,
+// 64 -> 1.18 s, 32 -> 1.17 s (plateau).
+static const int  NOISE_BLOCK  = 64;
 static const int  HEIGHT_BLOCK = 128;
 static const size_t PERM_SURF_BYTES  = (size_t)GPU_OCT_SURF  * 257;
 static const size_t PERM_DEPTH_BYTES = (size_t)GPU_OCT_DEPTH * 257;

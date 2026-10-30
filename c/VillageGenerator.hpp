@@ -159,6 +159,29 @@ public:
     static void setPrefetchRadius(int blocks);
     static int  getPrefetchRadius();
 
+    /**
+     * Liste blanche de templates de départ (le centre du village, tiré en
+     * premier). Si elle est non vide, generate() abandonne immédiatement quand
+     * le centre tiré n'y figure pas — avant de calculer la moindre hauteur ou
+     * d'assembler quoi que ce soit.
+     *
+     * Sert à ne pas payer l'assemblage complet d'un village dont le centre
+     * annonce déjà un petit village. Les noms sont ceux des pools, par exemple
+     * pour la taiga :
+     *     taiga/town_centers/taiga_meeting_point_1        (poids 49)
+     *     taiga/town_centers/taiga_meeting_point_2        (poids 49)
+     *     taiga/zombie/town_centers/taiga_meeting_point_1 (poids 1)
+     *     taiga/zombie/town_centers/taiga_meeting_point_2 (poids 1)
+     *
+     * Volontairement générique : le générateur ne connaît aucun biome
+     * particulier, c'est l'appelant qui décide quoi garder.
+     *
+     * Liste vide = aucun filtre (défaut). À positionner AVANT de lancer les
+     * threads : la lecture est concurrente, l'écriture ne l'est pas.
+     */
+    static void setStartTemplateFilter(const std::vector<std::string>& allowed);
+    static const std::vector<std::string>& getStartTemplateFilter();
+
     bool generate(TerrainGenerator* generator, int chunkX, int chunkZ, ChunkRand& rand);
     bool generate(TerrainGenerator* generator, int chunkX, int chunkZ, ChunkRand& rand,
                  Biome* biomeWanted, bool useHeightMapOptimizer, bool towncenterOptimizer);

@@ -9,26 +9,27 @@
     // compilateur ; seul --c / --cuda change. Comparer un binaire mingw à un
     // binaire MSVC mesurerait surtout la différence entre les deux compilateurs.
     //
-    // CUBIOMES_LAYER_CACHE=0 est nécessaire : le cache de layer de cubiomes
-    // fausse les biomes des requêtes 1x1 (cf. c/test_layer_cache_consistency.c).
+    // Le bug du cache de layer cubiomes (collision de clé au point (-1,-1)) est
+    // corrigé : CUBIOMES_LAYER_CACHE=0 n'est plus nécessaire. Vérifiable par
+    // `make -C c test_layer_cache_consistency`.
     //
     // Le travail du bench est défini par un ENSEMBLE de world seeds, pas par un
     // nombre de villages : l'ensemble produit est donc identique quel que soit
     // le nombre de threads. Le checksum est commutatif — s'il est le même entre
     // deux configurations, elles ont produit exactement les mêmes villages.
     //
-    // Mesuré sur RTX 5070 + Ryzen 7 9700X : le GPU sature vers 6 threads
-    // (~725 villages/s). 4 threads en atteignent déjà ~92 %.
+    // Mesuré sur RTX 5070 + Ryzen 7 9700X : l'optimum est à 16-20 threads
+    // (~1850 villages/s). Le 9700X a 8 cœurs mais 16 logiques, et chaque thread
+    // passe ~28 % de son temps à attendre le GPU — d'où le gain à sur-allouer.
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Bench villages — CUDA (4 threads)",
+            "name": "Bench villages — CUDA (16 threads)",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/c/cuda/bench_village.exe",
-            "args": ["--cuda", "--seed", "1", "--worlds", "520", "--threads", "4"],
+            "args": ["--cuda", "--seed", "1", "--worlds", "520", "--threads", "16"],
             "cwd": "${workspaceFolder}/c/cuda",
-            "environment": [{ "name": "CUBIOMES_LAYER_CACHE", "value": "0" }],
             "console": "integratedTerminal",
             "preLaunchTask": "build: bench_village"
         },
@@ -39,18 +40,16 @@
             "program": "${workspaceFolder}/c/cuda/bench_village.exe",
             "args": ["--cuda", "--seed", "1", "--worlds", "520", "--threads", "1"],
             "cwd": "${workspaceFolder}/c/cuda",
-            "environment": [{ "name": "CUBIOMES_LAYER_CACHE", "value": "0" }],
             "console": "integratedTerminal",
             "preLaunchTask": "build: bench_village"
         },
         {
-            "name": "Bench villages — C (4 threads)",
+            "name": "Bench villages — C (16 threads)",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/c/cuda/bench_village.exe",
-            "args": ["--c", "--seed", "1", "--worlds", "520", "--threads", "4"],
+            "args": ["--c", "--seed", "1", "--worlds", "520", "--threads", "16"],
             "cwd": "${workspaceFolder}/c/cuda",
-            "environment": [{ "name": "CUBIOMES_LAYER_CACHE", "value": "0" }],
             "console": "integratedTerminal",
             "preLaunchTask": "build: bench_village"
         },
@@ -62,7 +61,6 @@
             "args": ["--cuda", "--seed", "1", "--worlds", "120",
                      "--threads", "${input:nbThreads}"],
             "cwd": "${workspaceFolder}/c/cuda",
-            "environment": [{ "name": "CUBIOMES_LAYER_CACHE", "value": "0" }],
             "console": "integratedTerminal",
             "preLaunchTask": "build: bench_village"
         },
@@ -71,7 +69,7 @@
             // La structure seed de départ est tirée au hasard et imprimée en
             // première ligne — la noter pour rejouer la même recherche (--seed).
             // Les trouvailles vont sur la console ET dans c/cuda/village_finds.log.
-            "name": "Recherche villages — CUDA (> 5 forgerons, 4 threads)",
+            "name": "Recherche villages — CUDA (> 5 forgerons, 16 threads)",
             "type": "cppvsdbg",
             "request": "launch",
             "program": "${workspaceFolder}/c/cuda/search_village_cuda.exe",
@@ -79,11 +77,10 @@
                 "--smiths", "6",
                 "--pieces", "250",
                 "--worlds", "32",
-                "--threads", "4",
+                "--threads", "16",
                 "--out", "village_finds.log"
             ],
             "cwd": "${workspaceFolder}/c/cuda",
-            "environment": [{ "name": "CUBIOMES_LAYER_CACHE", "value": "0" }],
             "console": "integratedTerminal",
             "preLaunchTask": "build: search_village_cuda"
         },
@@ -99,7 +96,6 @@
             "program": "${workspaceFolder}/c/cuda/test_village_seeds.exe",
             "args": [],
             "cwd": "${workspaceFolder}/c/cuda",
-            "environment": [{ "name": "CUBIOMES_LAYER_CACHE", "value": "0" }],
             "console": "integratedTerminal",
             "preLaunchTask": "build: test_village_seeds"
         },
@@ -111,9 +107,40 @@
             "program": "${workspaceFolder}/c/cuda/test_village_seeds.exe",
             "args": ["${input:worldSeed}", "${input:chunkX}", "${input:chunkZ}", "--dump"],
             "cwd": "${workspaceFolder}/c/cuda",
-            "environment": [{ "name": "CUBIOMES_LAYER_CACHE", "value": "0" }],
             "console": "integratedTerminal",
             "preLaunchTask": "build: test_village_seeds"
+        },
+        {
+            // Reprend des structure seeds deja trouvees et balaye les 65 536
+            // world seeds possibles (les 16 bits de poids fort).
+            //
+            // Entree : c/cuda/seeds_a_affiner.txt — une cible par ligne, au
+            // format « structureSeed (chunkX,chunkZ) ». Une ligne TROUVE de la
+            // recherche collee telle quelle marche aussi.
+            // Sortie : c/cuda/seeds_trouvees.txt, une seed nue par ligne et rien
+            // d'autre, a coller directement dans le jeu. Une ligne par cible :
+            // la meilleure world seed. Le fichier est REECRIT a chaque
+            // lancement. Le detail reste sur la console.
+            //
+            // A savoir avant de lancer : le world seed ne fait varier que le
+            // TERRAIN, pas le tirage du jigsaw (ChunkRand vient de la structure
+            // seed et du chunk). Mesure sur une cible : 1196 world seeds donnent
+            // le meme village a 9 forgerons, et aucune ne fait mieux. L'outil
+            // donne donc du CHOIX, pas de meilleurs villages.
+            // Comptez ~12 s par cible.
+            "name": "Affiner les seeds — 65 536 world seeds",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/c/cuda/refine_seeds.exe",
+            "args": [
+                "--in", "seeds_a_affiner.txt",
+                "--out", "seeds_trouvees.txt",
+                "--smiths", "8",
+                "--threads", "16"
+            ],
+            "cwd": "${workspaceFolder}/c/cuda",
+            "console": "integratedTerminal",
+            "preLaunchTask": "build: refine_seeds"
         },
         {
             "name": "Recherche villages — CUDA (seuil et threads au choix)",
@@ -128,7 +155,6 @@
                 "--out", "village_finds.log"
             ],
             "cwd": "${workspaceFolder}/c/cuda",
-            "environment": [{ "name": "CUBIOMES_LAYER_CACHE", "value": "0" }],
             "console": "integratedTerminal",
             "preLaunchTask": "build: search_village_cuda"
         }
@@ -153,6 +179,7 @@
             "description": "chunk X",
             "default": "6"
         },
+        
         {
             "id": "chunkZ",
             "type": "promptString",
@@ -162,9 +189,9 @@
         {
             "id": "nbThreads",
             "type": "pickString",
-            "description": "Combien de threads ? (le GPU sature vers 10)",
-            "options": ["1", "2", "4", "6", "8", "12"],
-            "default": "6"
+            "description": "Combien de threads ? (optimum mesuré : 16-20)",
+            "options": ["1", "2", "4", "8", "16", "12"],
+            "default": "12"
         }
     ]
 }

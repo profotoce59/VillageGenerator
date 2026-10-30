@@ -248,6 +248,48 @@ repli sur l'échantillon de mesure.
 en dessous de ~80 blocs, les replis sur le CPU coûtent plus que les colonnes
 GPU économisées (rayon 64 → 1557/s, rayon 48 → 1162/s, contre 1669/s à 80).
 
+## Filtrer sur la 2ᵉ pièce : mesuré, et non rentable
+
+[`stats_pieces.cpp`](stats_pieces.cpp) groupe les villages par le nom de leur
+pièce n°K et compare les distributions (nombre de pièces, forgerons). Le seuil
+« bon village » est `--good` (défaut 4) : à ≥ 8 forgerons on trouve environ un
+village sur 300 000, bien trop rare pour comparer des groupes.
+
+```
+make stats_pieces
+./stats_pieces.exe --by 1 --seeds 1200 --worlds 32 --threads 6
+```
+
+Sur 158 743 villages taïga, la pièce n°1 sépare très bien — mais uniquement
+parce qu'elle **redit le centre**. `taiga/villagers/baby` en pièce 1 (30 % des
+villages, 80 pièces en moyenne) est presque toujours un `meeting_point_1`.
+
+Une fois le centre fixé à `meeting_point_2` (`--start`), le signal disparaît :
+sur 155 787 villages, le taux de villages à ≥ 4 forgerons reste entre 0,2 % et
+1,3 % selon la pièce n°1, pour une moyenne de 0,72 %, et le meilleur compromis
+n'atteint qu'un enrichissement de 1,3 — contre 1,60 pour le filtre de centre
+déjà en place.
+
+Et l'enrichissement n'est pas le gain en temps. Il faut assembler le village
+jusqu'à la pièce n°K pour la connaître, et ce préfixe se paie sur **tous** les
+villages. Avec `a` = part du coût payée avant l'abandon, `k` = fraction gardée
+et `r` = rappel, les bons villages trouvés par seconde sont multipliés par
+`r / (a + k(1-a))`. Le filtre de centre a `a ≈ 0` et se résume à `r/k`. Sur la
+pièce 1, `a` est aujourd'hui minoré par le prefetch GPU, qui précède
+l'assemblage dans `Assembler::Assembler` — et même avec un `a` optimiste de
+0,2, le meilleur point de la courbe plafonne à ~1,04. Conclusion : ne pas
+filtrer sur la pièce 1.
+
+Deux résultats secondaires utiles :
+
+- `crossroad_02` / `crossroad_03` en pièce 1 donnent les plus gros villages
+  (155 et 154 pièces en moyenne, p90 ≈ 190, contre 127 et 165) — pertinent pour
+  `--pieces`, pas pour les forgerons.
+- `crossroad_01` en pièce 1 est le seul groupe nettement enrichi en forgerons
+  (2,17 % de villages à ≥ 4, contre 0,72 %), mais il ne représente que 0,7 % des
+  villages : le garder seul reviendrait à payer le préfixe sur tout pour ne
+  capturer que 2 % des bons villages.
+
 ## Reprise de scan et extension incrémentale
 
 `generate_column_from_y` reprend le scan avec une plage plus haute quand le
@@ -349,3 +391,7 @@ batcher.heightmap(x0, z0, 100, 100, HEIGHT_PRED_NOT_AIR, heights.data());
 - L'ordre des sommations flottantes est significatif partout : accumulation
   séquentielle des octaves (pas de réduction en arbre) et `d_lerp3` calque
   l'ordre des arguments de `lerp3` de cubiomes.
+
+  Best seeds find yet : structureSeed=149749096799515 worldSeed=4653348724170011 chunk=(110,169) bloc=(1760,2704) type=taiga pieces=171 forgerons=9 version 1.16.1
+structureSeed=68283554744916 worldSeed=1194183461587540 chunk=(113,42) bloc=(1808,672) type=taiga pieces=163 forgerons=9
+TROUVE  structureSeed=265628224482390 worldSeed=6739552688827478 chunk=(164,135) bloc=(2624,2160) type=taiga pieces=132 forgerons=9

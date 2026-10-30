@@ -57,12 +57,6 @@ int main(int argc, char** argv)
     printf("backend : %s | seed : %llu | villages : %ld\n\n",
            useCuda ? "CUDA" : "C", (unsigned long long)seed, count);
 
-    {
-        const char* env = getenv("CUBIOMES_LAYER_CACHE");
-        if (!env || env[0] != '0')
-            printf("(CUBIOMES_LAYER_CACHE non nul : les biomes des requêtes 1x1 sont faux,\n"
-                   " ça n'invalide pas le profil mais les villages générés ne sont pas justes)\n\n");
-    }
 
     // Prechauffage CUDA hors mesure (init du contexte driver, ~100 ms).
     if (useCuda) {

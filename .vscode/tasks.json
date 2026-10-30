@@ -32,10 +32,20 @@
             "presentation": { "reveal": "silent", "panel": "shared" }
         },
         {
+            "label": "build: refine_seeds",
+            "type": "shell",
+            "command": "make",
+            "args": ["-C", "c/cuda", "refine_seeds"],
+            "options": { "cwd": "${workspaceFolder}" },
+            "problemMatcher": [],
+            "group": "build",
+            "presentation": { "reveal": "silent", "panel": "shared" }
+        },
+        {
             "label": "build: tous les tests CUDA",
             "type": "shell",
             "command": "make",
-            "args": ["-C", "c/cuda", "test_cuda", "test_village_cuda", "test_village_seeds", "bench_village", "search_village_cuda"],
+            "args": ["-C", "c/cuda", "test_cuda", "test_village_cuda", "test_village_seeds", "bench_village", "search_village_cuda", "refine_seeds"],
             "options": { "cwd": "${workspaceFolder}" },
             "problemMatcher": [],
             "group": "build"
