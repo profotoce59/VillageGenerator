@@ -308,8 +308,10 @@ L'extension repose sur le fait que le bruit à un `y` donné **ne dépend pas** 
 le `calloc` du CPU) se déplace. On ne calcule donc que `[ancien, nouveau)`, et
 l'ancienne sentinelle est écrasée par sa vraie valeur.
 
-Cela a imposé de découpler l'indexation de la grille de `startSizeY` : le pas est
-désormais `allocStride` (fixe), pas `startSizeY + 1`.
+Cela a imposé de découpler l'indexation de la grille de `startSizeY`. La grille
+est désormais y-major (`noiseGrid[y * numColumns + col]`, voir `TODO.md` §2.1) :
+le pas d'une ligne est le nombre de colonnes du lot, et `allocRows` borne le
+nombre de lignes. Ajouter des lignes en extension ne déplace donc rien.
 
 Mesuré sur 2157 villages — 32 % déclenchent une reprise, d'où 2845 lancements :
 

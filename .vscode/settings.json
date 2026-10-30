@@ -15,5 +15,6 @@
         "bitset": "cpp",
         "stdexcept": "cpp",
         "cstdint": "cpp"
-    }
+    },
+    "cmake.sourceDirectory": "/Users/romai/Documents/git_perso/VillageGenerator/cubiomes"
 }

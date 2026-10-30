@@ -1,0 +1,42 @@
+Copier du CPU vers le GPU : 
+- Allouer de la mémoire au global memory
+- transfert données RAM -> global memory (cudaMemcpy) parameter 4 cudaMemcpyHostToDevice (Host = CPU)
+
+Appel de la fonction kernel
+- grille de thread sur GPU créé
+- la grille divisé en blocs
+- chaque bloc contient le même nombre de thread
+- thread peux être écrit sous la forme (x,y,z) ->
+- Une grille peux contenir des bloc en 1D ou des blocs en 2D (1 ligne de bloc ou plusieurs lignes de blocs)
+Mettre une image et pareil pour les threads qui peuvent être en 2D dans chaque bloc.
+TODO Mettre les deux photos de la vidéo youtuble partie 2
+On peux calculer un index global du thread pour simplifier : Global_x = blockDim_x.blockId_x + threadId_x
+Global_y = blockDim_y.blockId_y + threadId_y
+
+max : 1 block 1024 threads
+kernel function : c'est la fonction que chaque thread va exécuter et cette fonction est identique pour tous les threads
+
+Streaming multiprocessor (SM): 
+Lorsqu'on lance la fonction kernel : Chaque threads vont être assigné à un SM. tous les threads d'un block au même.
+sûrement que plusieurs blocs seront assigné au même SM.
+la SM possède une mémoire partagé (on chipp)
+différente de la off chipp (VRAM) beaucoup plus grosse. (mais plus loin). donc plus longue (utilisation de la bandwith)
+Intéraction entre les thread d'un même bloc possible ????? qu'est ce que ça veut dire concrétement.
+les threads d'un block sont exécuté dnas nimporte quel ordre donc à prendre en compte.
+
+Memory Coalescence
+la SM possède des Warps  warps qui peuvent chacun exécuter 32 threads. elle va éxécuter la même instruction pour tous les threads.
+la SM possède une mémoire in-chip.
+Pour éxécuter le programme in-chip va chercher l'élement de la off-chip (long. processus) puis exécuter les instruction (rapide).
+Elle ne peut pas aller chercher les élements de la off-chip en parallèle sauf si des threads consécutif doivent aller chercher des index mémoire consécutifs.
+
+Shared Memory
+Shared Memory : commun au bloc, 16KB / SM
+Registers : unique au threads, 8KB/ thread
+L'objectif est donc de donner à nos Shared memory des données qui sont stockées
+ sur la shared memory et qui peut être utilisés par les autres threads du même block pour éviter de communiquer avec la VRAM
+
+
+
+
+

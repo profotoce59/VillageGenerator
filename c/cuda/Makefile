@@ -57,8 +57,12 @@ all: $(LIB)
 
 # ---- CUDA objects --------------------------------------------------------
 
+# NVCC_FLAGS_EXTRA : vide par defaut. Ex. "-Xptxas -v" pour afficher registres
+# et spills par kernel (utilise par le skill cuda-optimize).
+NVCC_FLAGS_EXTRA ?=
+
 village_noise.obj: village_noise.cu village_noise.cuh
-	$(NVCC) $(NVCC_FLAGS) -c $< -o $@
+	$(NVCC) $(NVCC_FLAGS) $(NVCC_FLAGS_EXTRA) -c $< -o $@
 
 village_noise_host.obj: village_noise_host.cpp village_noise_host.hpp village_noise.cuh
 	$(NVCC) $(NVCC_FLAGS) -c $< -o $@
