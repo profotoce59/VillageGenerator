@@ -26,7 +26,9 @@ Types d'items :
 - `[ ]` / `[~]` : changement de code, cycle complet (§2 à §7).
 - `[m]` : **mesure seule**. Pas de code : profiler l'état courant (§4), lire les
   métriques citées, les consigner (§7), puis passer l'item en `[x]` avec la
-  conclusion.
+  conclusion. Si l'item fixe des règles de décision (ex. 2.16), appliquer
+  celles-ci aux items qui en dépendent, et le dire dans le résumé : quels items
+  remontent, lesquels deviennent bloqués.
 - **Balayage** (l'item demande de comparer plusieurs valeurs, ex. 2.5) : une
   mesure par valeur, dans `ncu_runs/<item>/<valeur>/`, avec le même protocole.
   Garder la meilleure valeur et consigner toutes les mesures.
@@ -264,6 +266,31 @@ plupart des runs tiennent dans ±1 %. Si l'écart est entre 1 et 3 %, relancer
 une 2e série et regarder si le signe se confirme. Les débits à 400 mondes sont
 plus hauts qu'à 100 (démarrage mieux amorti) : ne comparer que des séries
 faites avec le même nombre de mondes.
+
+### 4e. Saturation du GPU à 16 threads (item 2.16, et à refaire après un gros gain)
+
+Ce script répond à une question en amont de tous les items de kernel : **le GPU
+est-il le goulot ?** Il mesure l'attente GPU vue des threads (borne d'Amdahl),
+le débit à 16, 24 et 32 threads (sur-souscription), et une trace nsys à 16
+threads (union des intervalles de kernels, transferts, appels CUDA bloquants,
+`SM Active`). Environ 5 min :
+
+```bash
+cd c/cuda && rm -f village_noise.obj && make bench_village
+bash ../../.claude/skills/cuda-optimize/saturation.sh ncu_runs/<item>
+```
+
+Les résultats sont dans `ncu_runs/<item>/{A_amdahl,B_threads,C_nsys}.txt`.
+Les règles de décision sont dans l'item 2.16 du TODO.
+
+Si `--gpu-metrics-devices` est refusé (pilote, droits), le script relance sans :
+la partie `SM Active` manque alors, le reste est valable. Le refaire après
+tout item qui gagne plus de 10 % de débit : le goulot a pu changer de côté.
+
+Ne pas confondre avec la ligne « GPU occupé à X % du temps mural » de
+`bench_village` : elle additionne les intervalles entre événements de chaque
+stream, qui se chevauchent à 16 threads. Elle peut donc dépasser 100 % et ne
+dit rien de la saturation. L'union des intervalles de la trace nsys, si.
 
 ## 5. Valider la correction (avant de regarder les perfs)
 

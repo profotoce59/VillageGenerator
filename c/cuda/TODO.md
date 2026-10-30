@@ -406,6 +406,202 @@ redevenir meilleur. Balayage avec `throughput.sh ncu_runs/2.15 K1 K2 K4`
 (binaires construits avec `NVCC_FLAGS_EXTRA="-DNOISE_K=…"`). Garder le
 meilleur débit à 16 threads.
 
+### 2.16 `[m]` Le GPU est-il encore le goulot à 16 threads ?
+
+Ajouté le 2026-10-30. **À faire avant tout autre item** : le résultat décide
+si les items de kernel (2.17 à 2.19, 2.21) peuvent encore payer.
+
+Deux indices disent que le GPU n'est peut-être plus le goulot :
+- **des gains de kernel qui ne passent plus dans le débit** : 2.4 (kernel 0
+  −7,4 %) et 2.8 (kernel 1 −3,7 %) donnent 0 % à 16 threads ;
+- **l'argument du README contre le batching est périmé**. Il comparait 1,19 ms
+  de kernels à 0,29 ms de surcoût hôte par lancement. Après 2.3, 2.6 et 2.14,
+  les kernels font environ 216 + 95 + 52 µs ≈ 0,36 ms : le surcoût hôte est du
+  **même ordre** que le calcul.
+
+Mesure, en une commande (environ 5 min) :
+
+```bash
+cd c/cuda && rm -f village_noise.obj && make bench_village
+bash ../../.claude/skills/cuda-optimize/saturation.sh ncu_runs/2.16
+```
+
+- **A. Amdahl côté CPU** : la part `f` du temps des threads passée à attendre
+  le prefetch GPU (upload + kernels + file d'attente + download). Un GPU
+  infiniment rapide donnerait au mieux `1 / (1 − f)` de débit. Si `f` vaut 15 %,
+  toutes les optimisations GPU réunies plafonnent à +18 %.
+- **B. Sur-souscription** : débit à 16, 24 et 32 threads. Le Ryzen 7 9700X a
+  16 threads logiques : un thread qui attend le GPU laisse son cœur vide. Si 24
+  ou 32 threads font monter le débit, le GPU avait de la marge et le CPU
+  dormait. C'est aussi un **gain gratuit**, à reporter dans le README et les
+  scripts de recherche.
+- **C. Trace nsys à 16 threads** : part du temps où au moins un kernel tourne
+  (union des intervalles, toutes streams confondues), concurrence moyenne,
+  trous de plus de 100 µs, temps des transferts, temps des threads dans
+  `cudaEventSynchronize` et `cudaMemcpyAsync`, et `SM Active` si les
+  gpu-metrics sont disponibles.
+
+Décision :
+- **GPU saturé** (kernel actif ≈ 100 % du temps central, SM Active élevé,
+  `f` > 50 %, pas de gain à 24/32 threads) : les items de kernel restent la
+  priorité. Continuer par 2.17.
+- **GPU sous-rempli** (kernel actif ≈ 100 % mais SM Active bas) : les lancements
+  sont trop petits. Remonter 2.21 (fusion) et rouvrir la question du batching
+  dans le README.
+- **GPU qui attend l'hôte** (kernel actif < 70 %, ou `f` < 20 %, ou gain à
+  24/32 threads) : les items de kernel sont plafonnés par Amdahl. Passer à 2.20
+  (transferts) et regarder le travail CPU (préparation des colonnes et des
+  biomes) ; les items 2.17 à 2.19 et 2.21 passent après.
+
+Dans tous les cas, mettre à jour le § « Pourquoi le batching… » du README avec
+les nouveaux chiffres.
+
+### 2.17 `[ ]` Kernel 2b : un thread par cellule 4×4, interpolations partagées
+
+Dépend de 2.6. Conditionnel à 2.16 (GPU saturé ou sous-rempli).
+
+`d_lerp3(percentY, percentX, percentZ, …)` fait, dans cet ordre imposé :
+4 lerps en **Y**, puis 2 lerps en **X**, puis 1 lerp en **Z**.
+- Les 4 lerps Y ne dépendent que de `posY` et des 8 coins : ils sont
+  **identiques pour les 16 positions** de la cellule.
+- Les 2 lerps X ne dépendent que de `percentX` : partagés par les 4 positions
+  d'une même colonne x.
+- Seul le lerp Z est propre à chaque position.
+
+| Positions par thread | Lerps par `posY` pour 16 positions |
+|---|---|
+| 1 (avant 2.6) | 16 × 7 = 112 |
+| 4 en x (2.6), si `nvcc` factorise déjà les lerps Y | 4 × (4 + 4 × 3) = 64 |
+| **4×4 (cet item)** | 4 + 4 × 2 + 16 = **28** |
+
+Bit-exact : les mêmes valeurs sont calculées avec les mêmes opérations, une
+seule fois au lieu de plusieurs. 2b est limité par le calcul (SM 70 %, mémoire
+< 1 %), c'est donc le bon levier pour ce kernel.
+
+- **D'abord le SASS** (leçon de 2.2) : regarder si `nvcc` factorise déjà les
+  lerps Y entre les 4 positions de 2.6 (`nvcc -cubin` puis `cuobjdump -sass`,
+  compter les `DADD`/`DMUL` de la boucle interne). La factorisation en z, elle,
+  n'existe pas encore.
+- Mapping : un thread par cellule, avec ses positions `[max(x0, 4·cellX), min(x0+w, 4·cellX+4))`
+  × la même chose en z. Il peut y en avoir moins de 16 aux bords.
+- Masque de 16 bits « position trouvée » : on sort quand toutes sont trouvées.
+  Les lerps Y et X restent calculés tant qu'une position qui en dépend n'est pas
+  trouvée.
+- Coût attendu : 4× moins de threads que 2.6, et une divergence interne un peu
+  plus forte (un thread attend la plus basse de ses 16 positions, qui restent
+  proches puisqu'elles sont dans la même cellule). Surveiller les registres
+  (72 aujourd'hui) et les spills : 16 hauteurs et 16 `percentZ` à garder.
+
+À mesurer : débit à 16 threads ; instructions de 2b, registres, spills, threads actifs par warp.
+
+### 2.18 `[m]` Kernel 1 : raisons d'attente des warps et limites d'occupancy
+
+Conditionnel à 2.16 (GPU saturé ou sous-rempli). Décide de 2.19 et pèse sur 2.21.
+
+Depuis 2.14, les warps du kernel 1 sont pleins (31,8 / 32). Il reste à savoir
+**sur quoi ils attendent**. Profil complet d'un seul kernel (SKILL §4c), puis
+lire deux sections :
+- *Warp State Statistics* : `short_scoreboard` / `mio_throttle` (latence des
+  lookups en shared memory, avec 77k conflits de banc, cf. 2.11),
+  `math_pipe_throttle` (pipeline FP64 saturé : bit-exactitude oblige, il ne
+  reste presque rien à gagner), `long_scoreboard` (mémoire globale), `barrier`
+  (`__syncthreads()` après la copie de `s_perm`).
+- *Occupancy* : ce qui limite les warps par SM (registres, shared memory, blocs).
+  Calcul théorique **à confirmer** : environ 11,3 Ko de shared par bloc de 64
+  threads (10 280 o de tables + réserve), soit environ 8 blocs = 16 warps par SM.
+  Les registres (80 par thread) autoriseraient environ 24 warps. La shared
+  memory serait donc la limite.
+
+Contre-indice à garder en tête : en 2.5, des blocs de 32 (2× moins de warps
+possibles par SM) donnaient le même débit que des blocs de 64. L'occupancy
+n'est peut-être pas ce qui limite. Faire la même lecture sur 2b.
+
+### 2.19 `[ ]` Tables `perm` lues via le cache L1 au lieu de la shared memory — kernels 0, 1
+
+Conditionnel à 2.18 : ne faire que si la shared memory limite l'occupancy, ou
+si `short_scoreboard` / `barrier` dominent les attentes.
+
+Aujourd'hui, **chaque bloc copie ses 10 Ko de tables** dans sa shared memory.
+Avec 8 blocs sur un SM, ce sont 8 copies identiques dans la même mémoire
+on-chip (shared et L1 partagent les mêmes 128 Ko du SM), plus la copie au
+démarrage et le `__syncthreads()`. En lisant les tables en global, en lecture
+seule (`const uint8_t* __restrict__` + `__ldg`), **une seule copie dans le L1
+sert tous les blocs du SM**. On libère la shared memory (donc de l'occupancy) et
+on supprime la copie (environ 3,7 % du kernel 1 d'après 2.8).
+
+Risque : le L1 sert moins bien que la shared memory des lectures aléatoires à
+l'octet (une requête par ligne de cache distincte dans le warp, au lieu de 32
+bancs en parallèle). C'est précisément ce que la mesure tranche. Variante
+intermédiaire, si le résultat est mitigé : garder en shared les 16 tables
+`octmin`, les plus utilisées, et lire le reste via L1.
+
+À mesurer : débit à 16 threads ; occupancy théorique et atteinte,
+`l1tex__t_sector_hit_rate.pct`, raisons d'attente, temps du kernel 1.
+
+### 2.20 `[ ]` Mémoire hôte « pinned » pour les transferts
+
+Conditionnel à 2.16 : ne faire que si les transferts ou `cudaMemcpyAsync`
+pèsent dans la trace (C), ou si le GPU attend l'hôte.
+
+Les tampons hôte sont des `std::vector` (par exemple `heights_` dans
+`cuda_height_provider.cpp`), donc de la **mémoire paginable**. Dans ce cas,
+`cudaMemcpyAsync` n'est pas vraiment asynchrone : le pilote recopie d'abord dans
+un tampon interne verrouillé, sur le CPU, puis lance le DMA. Avec
+`cudaMallocHost` (alloué une fois par contexte, à la taille max), le DMA lit et
+écrit directement la mémoire de l'application. Le transfert devient vraiment
+asynchrone, et il n'y a plus de copie CPU en plus.
+
+- Concerne : l'upload de `columns` (`ColumnParams`, 24 o × colonnes) et le
+  download de `heightsOut` (4 o × w × h).
+- Garder la même API : copier depuis ou vers le tampon pinned à l'intérieur du
+  provider. Libérer avec `cudaFreeHost` dans `cuda_noise_destroy`.
+- Ne pas abuser de la mémoire pinned : c'est de la RAM verrouillée, à raison
+  d'un tampon par thread (16 contextes).
+
+À mesurer : débit à 16 threads ; dans nsys, durée des memcpy et temps des
+threads dans `cudaMemcpyAsync`.
+
+### 2.21 `[ ]` Fusionner le kernel 0 dans le kernel 1 (coopération en shared memory)
+
+Conditionnel à 2.16 (GPU saturé ou sous-rempli) et à 2.18 (la shared memory ne
+doit pas déjà limiter l'occupancy : cet item ajoute 4 Ko par bloc).
+
+Le kernel 0 calcule un `randomOffset` par colonne (16 octaves `octdepth`). Il est
+limité par la latence (28 blocs, SM 24 %) et coûte un lancement de plus, ainsi
+qu'un aller-retour par `randomOffsets` en mémoire globale. Dans le kernel 1, les
+2 à 4 threads d'une même colonne (`nChunks`) peuvent faire ce travail ensemble :
+1. charger aussi les 16 tables `octdepth` dans `s_perm` (4 112 o de plus) ;
+2. se répartir les 16 octaves : chaque thread calcule `amplitude * pv` pour les
+   siennes, et l'écrit dans `s_depth[colonneLocale][octave]` ;
+3. `__syncthreads()` ;
+4. **un seul thread somme les 16 valeurs dans l'ordre 0 → 15**, comme
+   `compute_random_offsets`, puis applique le post-traitement : bit-exact ;
+5. `__syncthreads()`, puis tous lisent l'offset et calculent leurs `y`.
+
+- Les colonnes ne doivent pas être coupées entre deux blocs : taille de bloc =
+  `colonnesParBloc × nChunks`, à recalculer côté hôte.
+- Le chemin d'extension (`computeOffsets == false`) et les dimensions autres
+  que l'Overworld (offset nul) doivent sauter cette étape **sans** sauter les
+  `__syncthreads()`.
+- Supprime un lancement par prefetch et le tableau `d_randomOffsets` devient
+  inutile, sauf pour l'extension, qui relit les offsets déjà calculés. Le
+  garder donc, en l'écrivant depuis le kernel 1.
+
+À mesurer : débit à 16 threads ; somme des temps kernel 0 + kernel 1 dans
+nsys ; occupancy du kernel 1 (shared memory en plus).
+
+### 2.22 `[-]` Pistes écartées sans mesure (2026-10-30)
+
+- **CUDA Graphs** : économisent quelques µs de lancement par opération (5 par
+  prefetch). Or le surcoût hôte (environ 0,29 ms par lancement) vient surtout du
+  travail CPU (préparation des colonnes et des biomes), pas des lancements. À
+  rouvrir seulement si 2.16 montre un temps hôte dominé par les appels
+  `cudaLaunchKernel`.
+- **Calcul en FP32** : le FP32 est 32 à 64× plus rapide que le FP64 sur RTX,
+  mais la bit-exactitude avec le CPU l'interdit.
+- **Tiling en shared memory** et **vectorisation** : déjà tranchés par les
+  mesures (2.7 à 2.10).
+
 ### 2.13 `[-]` Tensor cores — rejeté sans mesure
 
 Les tensor cores ne font que `D = A × B + C` sur de petites tuiles de matrices.
